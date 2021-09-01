@@ -8,20 +8,10 @@ import flask
 from werkzeug.urls import url_encode
 
 from nyaa.backend import get_category_id_map
-from nyaa.torrents import create_magnet
 
 app = flask.current_app
 bp = flask.Blueprint('template-utils', __name__)
 _static_cache = {}  # For static_cachebuster
-
-
-# ######################## CONTEXT PROCESSORS ########################
-
-# For processing ES links
-@bp.app_context_processor
-def create_magnet_from_es_torrent():
-    # Since ES entries look like ducks, we can use the create_magnet as-is
-    return dict(create_magnet_from_es_torrent=create_magnet)
 
 
 # ######################### TEMPLATE GLOBALS #########################

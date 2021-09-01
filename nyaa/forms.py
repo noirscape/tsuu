@@ -18,12 +18,11 @@ from wtforms.widgets import html_params
 import dns.exception
 import dns.resolver
 
-from nyaa import bencode, models, utils
+from nyaa import models, utils
 from nyaa.extensions import config
 from nyaa.models import User
 
 app = flask.current_app
-
 
 class Unique(object):
 
@@ -345,19 +344,18 @@ class BanForm(FlaskForm):
 
 
 class NukeForm(FlaskForm):
-    nuke_torrents = SubmitField("\U0001F4A3 Nuke Torrents")
+    nuke_items = SubmitField("\U0001F4A3 Nuke Items")
     nuke_comments = SubmitField("\U0001F4A3 Nuke Comments")
 
 
 class UploadForm(FlaskForm):
-    torrent_file = FileField('Torrent file', [
+    submission_file = FileField('Item file', [
         FileRequired()
     ])
 
-    display_name = StringField('Torrent display name (optional)', [
-        Optional(),
+    display_name = StringField('Item display name', [
         Length(min=3, max=255,
-               message='Torrent display name must be at least %(min)d characters long and '
+               message='Item display name must be at least %(min)d characters long and '
                        '%(max)d at most.')
     ])
 
@@ -397,61 +395,10 @@ class UploadForm(FlaskForm):
     ratelimit = HiddenField()
     rangebanned = HiddenField()
 
-    def validate_torrent_file(form, field):
-        # Decode and ensure data is bencoded data
-        try:
-            torrent_dict = bencode.decode(field.data)
-            # field.data.close()
-        except (bencode.MalformedBencodeException, UnicodeError):
-            raise ValidationError('Malformed torrent file')
-
-        # Uncomment for debug print of the torrent
-        # _debug_print_torrent_metadata(torrent_dict)
-
-        try:
-            _validate_torrent_metadata(torrent_dict)
-        except AssertionError as e:
-            raise ValidationError('Malformed torrent metadata ({})'.format(e.args[0]))
-
-        site_tracker = app.config.get('MAIN_ANNOUNCE_URL')
-        ensure_tracker = app.config.get('ENFORCE_MAIN_ANNOUNCE_URL')
-
-        try:
-            tracker_found = _validate_trackers(torrent_dict, site_tracker)
-        except AssertionError as e:
-            raise ValidationError('Malformed torrent trackers ({})'.format(e.args[0]))
-
-        # Ensure private torrents are using our tracker
-        if torrent_dict['info'].get('private') == 1:
-            if torrent_dict['announce'].decode('utf-8') != site_tracker:
-                raise ValidationError(
-                    'Private torrent: please set {} as the main tracker'.format(site_tracker))
-
-        elif ensure_tracker and not tracker_found:
-            raise ValidationError(
-                'Please include {} in the trackers of the torrent'.format(site_tracker))
-
-        # Note! bencode will sort dict keys, as per the spec
-        # This may result in a different hash if the uploaded torrent does not match the
-        # spec, but it's their own fault for using broken software! Right?
-        bencoded_info_dict = bencode.encode(torrent_dict['info'])
-        info_hash = utils.sha1_hash(bencoded_info_dict)
-
-        # Check if the info_hash exists already in the database
-        existing_torrent = models.Torrent.by_info_hash(info_hash)
-        existing_torrent_id = existing_torrent.id if existing_torrent else None
-        if existing_torrent and not existing_torrent.deleted:
-            raise ValidationError('This torrent already exists (#{})'.format(existing_torrent.id))
-        if existing_torrent and existing_torrent.banned:
-            raise ValidationError('This torrent is banned'.format(existing_torrent.id))
-
-        # Torrent is legit, pass original filename and dict along
-        field.parsed_data = TorrentFileData(filename=os.path.basename(field.data.filename),
-                                            torrent_dict=torrent_dict,
-                                            info_hash=info_hash,
-                                            bencoded_info_dict=bencoded_info_dict,
-                                            db_id=existing_torrent_id)
-
+    def validate_submission_file(form, field):
+        return True
+        handler = get_handler_by_mimetype(field.data.mimetype)
+        handler.validate_upload(form, field)
 
 class UserForm(FlaskForm):
     user_class = SelectField('Change User Class')
@@ -460,16 +407,6 @@ class UserForm(FlaskForm):
     def validate_user_class(form, field):
         if not field.data:
             raise ValidationError('Please select a proper user class')
-
-
-class TorrentFileData(object):
-    """Quick and dirty class to pass data from the validator"""
-
-    def __init__(self, **kwargs):
-        for k, v in kwargs.items():
-            setattr(self, k, v)
-
-# https://wiki.theory.org/BitTorrentSpecification#Metainfo_File_Structure
 
 
 class ReportForm(FlaskForm):
@@ -513,126 +450,3 @@ class TrustedDecisionForm(FlaskForm):
     accept = SubmitField('Accept')
     reject = SubmitField('Reject')
 
-
-def _validate_trackers(torrent_dict, tracker_to_check_for=None):
-    announce = torrent_dict.get('announce')
-    assert announce is not None, 'no tracker in torrent'
-    announce_string = _validate_bytes(announce, 'announce', test_decode='utf-8')
-
-    tracker_found = tracker_to_check_for and (
-        announce_string.lower() == tracker_to_check_for.lower()) or False
-
-    announce_list = torrent_dict.get('announce-list')
-    if announce_list is not None:
-        _validate_list(announce_list, 'announce-list')
-
-        for announce in announce_list:
-            _validate_list(announce, 'announce-list item')
-
-            announce_string = _validate_bytes(
-                announce[0], 'announce-list item url', test_decode='utf-8')
-            if tracker_to_check_for and announce_string.lower() == tracker_to_check_for.lower():
-                tracker_found = True
-
-    return tracker_found
-
-
-# http://www.bittorrent.org/beps/bep_0019.html
-def _validate_webseeds(torrent_dict):
-    webseed_list = torrent_dict.get('url-list')
-    if isinstance(webseed_list, bytes):
-        # url-list should be omitted in case of no webseeds. However.
-        # qBittorrent has an empty bytestring for no webseeds,
-        # a bytestring for one and a list for multiple, so:
-        # In case of a empty, keep as-is for next if.
-        # In case of one, wrap it in a list.
-        webseed_list = webseed_list and [webseed_list]
-
-    # Merely check for truthiness ([], '' or a list with items)
-    if webseed_list:
-        _validate_list(webseed_list, 'url-list')
-
-        for webseed_url in webseed_list:
-            _validate_bytes(webseed_url, 'url-list item', test_decode='utf-8')
-
-
-def _validate_torrent_metadata(torrent_dict):
-    ''' Validates a torrent metadata dict, raising AssertionError on errors '''
-    assert isinstance(torrent_dict, dict), 'torrent metadata is not a dict'
-
-    info_dict = torrent_dict.get('info')
-    assert info_dict is not None, 'no info_dict in torrent'
-    assert isinstance(info_dict, dict), 'info is not a dict'
-
-    encoding_bytes = torrent_dict.get('encoding', b'utf-8')
-    encoding = _validate_bytes(encoding_bytes, 'encoding', test_decode='utf-8').lower()
-
-    name = info_dict.get('name')
-    _validate_bytes(name, 'name', test_decode=encoding)
-
-    piece_length = info_dict.get('piece length')
-    _validate_number(piece_length, 'piece length', check_positive=True)
-
-    pieces = info_dict.get('pieces')
-    _validate_bytes(pieces, 'pieces')
-    assert len(pieces) % 20 == 0, 'pieces length is not a multiple of 20'
-
-    files = info_dict.get('files')
-    if files is not None:
-        _validate_list(files, 'filelist')
-
-        for file_dict in files:
-            file_length = file_dict.get('length')
-            _validate_number(file_length, 'file length', check_positive_or_zero=True)
-
-            path_list = file_dict.get('path')
-            _validate_list(path_list, 'path')
-            # Validate possible directory names
-            for path_part in path_list[:-1]:
-                _validate_bytes(path_part, 'path part', test_decode=encoding)
-            # Validate actual filename, allow b'' to specify an empty directory
-            _validate_bytes(path_list[-1], 'filename', check_empty=False, test_decode=encoding)
-
-    else:
-        length = info_dict.get('length')
-        _validate_number(length, 'length', check_positive=True)
-
-    _validate_webseeds(torrent_dict)
-
-
-def _validate_bytes(value, name='value', check_empty=True, test_decode=None):
-    assert isinstance(value, bytes), name + ' is not bytes'
-    if check_empty:
-        assert len(value) > 0, name + ' is empty'
-    if test_decode:
-        try:
-            return value.decode(test_decode)
-        except UnicodeError:
-            raise AssertionError(name + ' could not be decoded from ' + repr(test_decode))
-
-
-def _validate_number(value, name='value', check_positive=False, check_positive_or_zero=False):
-    assert isinstance(value, int), name + ' is not an int'
-    if check_positive_or_zero:
-        assert value >= 0, name + ' is less than 0'
-    elif check_positive:
-        assert value > 0, name + ' is not positive'
-
-
-def _validate_list(value, name='value', check_empty=False):
-    assert isinstance(value, list), name + ' is not a list'
-    if check_empty:
-        assert len(value) > 0, name + ' is empty'
-
-
-def _debug_print_torrent_metadata(torrent_dict):
-    from pprint import pprint
-
-    # Temporarily remove 'pieces' from infodict for clean debug prints
-    info_dict = torrent_dict.get('info', {})
-    orig_pieces = info_dict.get('pieces')
-
-    info_dict['pieces'] = '<piece data>'
-    pprint(torrent_dict)
-
-    info_dict['pieces'] = orig_pieces

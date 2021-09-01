@@ -3,9 +3,9 @@
 {% block meta_image %}{{ user.gravatar_url() }}{% endblock %}
 {% block metatags %}
 {% if search.term %}
-<meta property="og:description" content="Search for '{{ search.term }}' in torrents uploaded by {{ user.username }}">
+<meta property="og:description" content="Search for '{{ search.term }}' in items uploaded by {{ user.username }}">
 {% else %}
-<meta property="og:description" content="Torrents uploaded by {{ user.username }}">
+<meta property="og:description" content="Items uploaded by {{ user.username }}">
 {% endif %}
 {% endblock %}
 
@@ -136,7 +136,7 @@
 						{{ nuke_form.csrf_token }}
 						<div class="row">
 							<div class="col-md-6 text-left">
-								{{ nuke_form.nuke_torrents(class="btn btn-danger", formaction=url_for('users.nuke_user_torrents', user_name=user.username)) }}
+								{{ nuke_form.nuke_items(class="btn btn-danger", formaction=url_for('users.nuke_user_items', user_name=user.username)) }}
 							</div>
 							<div class="col-md-6 text-right">
 								{{ nuke_form.nuke_comments(class="btn btn-danger", formaction=url_for('users.nuke_user_comments', user_name=user.username)) }}
@@ -153,7 +153,7 @@
 
 <div class="row">
 	<h3>
-		Browsing <span class="text-{{ user.userlevel_color }}" data-toggle="tooltip" title="{{ user.userlevel_str }}">{{ user.username }}</span>'{{ '' if user.username[-1] == 's' else 's' }} torrents
+		Browsing <span class="text-{{ user.userlevel_color }}" data-toggle="tooltip" title="{{ user.userlevel_str }}">{{ user.username }}</span>'{{ '' if user.username[-1] == 's' else 's' }} items
 		{% if torrent_query.actual_count is number and not search.term: %}
 		 ({{ torrent_query.actual_count  }})
 		{% endif %}

@@ -35,13 +35,13 @@
 					{% if comment.edited_time %}
 					<small data-timestamp-swap data-timestamp-title data-timestamp="{{ comment.edited_utc_timestamp }}" title="{{ comment.edited_time }}">(edited)</small>
 					{% endif %}
-					<small>on torrent <a href="{{ url_for('torrents.view', torrent_id=comment.torrent_id) }}">#{{comment.torrent_id}} <i>{{ comment.torrent.display_name }}</i></a></small>
+					<small>on item <a href="{{ url_for('items.view', torrent_id=comment.torrent_id) }}">#{{comment.item_id}} <i>{{ comment.item.display_name }}</i></a></small>
 					{# <div class="comment-actions">
 						{% if g.user.id == comment.user_id and not comment.editing_limit_exceeded %}
 						<button class="btn btn-xs edit-comment" title="Edit"{% if config.EDITING_TIME_LIMIT %} data-until="{{ comment.editable_until|int }}"{% endif %}>Edit</button>
 						{% endif %}
 						{% if g.user.is_moderator or g.user.id == comment.user_id %}
-						<form class="delete-comment-form" action="{{ url_for('torrents.delete_comment', torrent_id=comment.torrent_id, comment_id=comment.id) }}" method="POST">
+						<form class="delete-comment-form" action="{{ url_for('items.delete_comment', torrent_id=comment.torrent_id, comment_id=comment.id) }}" method="POST">
 							<button name="submit" type="submit" class="btn btn-danger btn-xs" title="Delete">Delete</button>
 						</form>
 						{% endif %}

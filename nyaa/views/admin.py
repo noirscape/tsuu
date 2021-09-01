@@ -76,7 +76,7 @@ def view_reports():
         action = report_action.action.data
         torrent_id = report_action.torrent.data
         report_id = report_action.report.data
-        torrent = models.Torrent.by_id(torrent_id)
+        torrent = models.Item.by_id(torrent_id)
         report = models.Report.by_id(report_id)
 
         if not torrent or not report or report.status != 0:
@@ -88,19 +88,19 @@ def view_reports():
             torrent.deleted = True
             report.status = 1
             log = log.format(report_id, 'Deleted', torrent_id,
-                             flask.url_for('torrents.view', torrent_id=torrent_id),
+                             flask.url_for('items.view', torrent_id=torrent_id),
                              report_user.username,
                              flask.url_for('users.view_user', user_name=report_user.username))
         elif action == 'hide':
             log = log.format(report_id, 'Hid', torrent_id,
-                             flask.url_for('torrents.view', torrent_id=torrent_id),
+                             flask.url_for('items.view', torrent_id=torrent_id),
                              report_user.username,
                              flask.url_for('users.view_user', user_name=report_user.username))
             torrent.hidden = True
             report.status = 1
         else:
             log = log.format(report_id, 'Closed', torrent_id,
-                             flask.url_for('torrents.view', torrent_id=torrent_id),
+                             flask.url_for('items.view', torrent_id=torrent_id),
                              report_user.username,
                              flask.url_for('users.view_user', user_name=report_user.username))
             report.status = 2

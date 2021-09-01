@@ -7,33 +7,33 @@ from werkzeug.datastructures import CombinedMultiDict
 
 from sqlalchemy.orm import joinedload
 
-from nyaa import backend, forms, models, torrents
+from nyaa import backend, forms, models
 from nyaa.extensions import db
 from nyaa.utils import cached_function
 
 app = flask.current_app
-bp = flask.Blueprint('torrents', __name__)
+bp = flask.Blueprint('items', __name__)
 
 
-@bp.route('/view/<int:torrent_id>', endpoint='view', methods=['GET', 'POST'])
-def view_torrent(torrent_id):
+@bp.route('/view/<int:item_id>', endpoint='view', methods=['GET', 'POST'])
+def view_item(item_id):
     if flask.request.method == 'POST':
-        torrent = models.Torrent.by_id(torrent_id)
+        item = models.Item.by_id(item_id)
     else:
-        torrent = models.Torrent.query \
+        item = models.Item.query \
                                 .options(joinedload('filelist')) \
-                                .filter_by(id=torrent_id) \
+                                .filter_by(id=item_id) \
                                 .first()
 
-    if not torrent:
+    if not item:
         flask.abort(404)
 
-    # Only allow admins see deleted torrents
-    if torrent.deleted and not (flask.g.user and flask.g.user.is_moderator):
+    # Only allow admins see deleted items
+    if item.deleted and not (flask.g.user and flask.g.user.is_moderator):
         flask.abort(404)
 
     comment_form = None
-    if flask.g.user and (not torrent.comment_locked or flask.g.user.is_moderator):
+    if flask.g.user and (not item.comment_locked or flask.g.user.is_moderator):
         comment_form = forms.CommentForm()
 
     if flask.request.method == 'POST':
@@ -44,45 +44,45 @@ def view_torrent(torrent_id):
             comment_text = (comment_form.comment.data or '').strip()
 
             comment = models.Comment(
-                torrent_id=torrent_id,
+                item_id=item_id,
                 user_id=flask.g.user.id,
                 text=comment_text)
 
             db.session.add(comment)
             db.session.flush()
 
-            torrent_count = torrent.update_comment_count()
+            torrent_count = item.update_comment_count()
             db.session.commit()
 
             flask.flash('Comment successfully posted.', 'success')
 
-            return flask.redirect(flask.url_for('torrents.view',
-                                                torrent_id=torrent_id,
+            return flask.redirect(flask.url_for('items.view',
+                                                item_id=item_id,
                                                 _anchor='com-' + str(torrent_count)))
 
-    # Only allow owners and admins to edit torrents
-    can_edit = flask.g.user and (flask.g.user is torrent.user or flask.g.user.is_moderator)
+    # Only allow owners and admins to edit items
+    can_edit = flask.g.user and (flask.g.user is item.user or flask.g.user.is_moderator)
 
     files = None
-    if torrent.filelist:
-        files = json.loads(torrent.filelist.filelist_blob.decode('utf-8'))
+    if item.filelist:
+        files = json.loads(item.filelist.filelist_blob.decode('utf-8'))
 
-    torrent_comments = models.Comment.query.filter_by(
-        torrent_id=torrent_id
+    item_comments = models.Comment.query.filter_by(
+        item_id=item_id
     ).order_by(models.Comment.id.asc())
 
     report_form = forms.ReportForm()
-    return flask.render_template('view.html', torrent=torrent,
+    return flask.render_template('view.html', item=item,
                                  files=files,
                                  comment_form=comment_form,
-                                 comments=torrent_comments,
+                                 comments=item_comments,
                                  can_edit=can_edit,
                                  report_form=report_form)
 
 
-@bp.route('/view/<int:torrent_id>/edit', endpoint='edit', methods=['GET', 'POST'])
-def edit_torrent(torrent_id):
-    torrent = models.Torrent.by_id(torrent_id)
+@bp.route('/view/<int:item_id>/edit', endpoint='edit', methods=['GET', 'POST'])
+def edit_torrent(item_id):
+    item = models.Item.by_id(item_id)
     form = forms.EditForm(flask.request.form)
     form.category.choices = _create_upload_category_choices()
     delete_form = forms.DeleteForm()
@@ -90,101 +90,123 @@ def edit_torrent(torrent_id):
 
     editor = flask.g.user
 
-    if not torrent:
+    if not item:
         flask.abort(404)
 
-    # Only allow admins edit deleted torrents
-    if torrent.deleted and not (editor and editor.is_moderator):
+    # Only allow admins edit deleted items
+    if item.deleted and not (editor and editor.is_moderator):
         flask.abort(404)
 
-    # Only allow torrent owners or admins edit torrents
-    if not editor or not (editor is torrent.user or editor.is_moderator):
+    # Only allow item owners or admins edit items
+    if not editor or not (editor is item.user or editor.is_moderator):
         flask.abort(403)
 
-    torrent_user_level = torrent.user and torrent.user.level
+    item_user_level = item.user and item.user.level
     if editor and editor.is_moderator and \
-            (torrent_user_level is None or editor.level > torrent_user_level):
+            (item_user_level is None or editor.level > item_user_level):
         ban_form = forms.BanForm()
 
     if flask.request.method == 'POST' and form.submit.data and form.validate():
-        # Form has been sent, edit torrent with data.
-        torrent.main_category_id, torrent.sub_category_id = \
+        # Form has been sent, edit item with data.
+        item.main_category_id, item.sub_category_id = \
             form.category.parsed_data.get_category_ids()
-        torrent.display_name = backend.sanitize_string((form.display_name.data or '').strip())
-        torrent.information = backend.sanitize_string((form.information.data or '').strip())
-        torrent.description = backend.sanitize_string((form.description.data or '').strip())
+        item.display_name = backend.sanitize_string((form.display_name.data or '').strip())
+        item.information = backend.sanitize_string((form.information.data or '').strip())
+        item.description = backend.sanitize_string((form.description.data or '').strip())
 
-        torrent.hidden = form.is_hidden.data
-        torrent.remake = form.is_remake.data
-        torrent.complete = form.is_complete.data
-        torrent.anonymous = form.is_anonymous.data
+        item.hidden = form.is_hidden.data
+        item.remake = form.is_remake.data
+        item.complete = form.is_complete.data
+        item.anonymous = form.is_anonymous.data
         if editor.is_trusted:
-            torrent.trusted = form.is_trusted.data
+            item.trusted = form.is_trusted.data
 
         if editor.is_moderator:
-            locked_changed = torrent.comment_locked != form.is_comment_locked.data
-            torrent.comment_locked = form.is_comment_locked.data
+            locked_changed = item.comment_locked != form.is_comment_locked.data
+            item.comment_locked = form.is_comment_locked.data
 
-        url = flask.url_for('torrents.view', torrent_id=torrent.id)
+        url = flask.url_for('items.view', item_id=item.id)
         if editor.is_moderator and locked_changed:
-            log = "Torrent [#{0}]({1}) marked as {2}".format(
-                torrent.id, url,
-                "comments locked" if torrent.comment_locked else "comments unlocked")
+            log = "Item [#{0}]({1}) marked as {2}".format(
+                item.id, url,
+                "comments locked" if item.comment_locked else "comments unlocked")
             adminlog = models.AdminLog(log=log, admin_id=editor.id)
             db.session.add(adminlog)
 
         db.session.commit()
 
         flask.flash(flask.Markup(
-            'Torrent has been successfully edited! Changes might take a few minutes to show up.'),
+            'Item has been successfully edited! Changes might take a few minutes to show up.'),
             'success')
 
-        url = flask.url_for('torrents.view', torrent_id=torrent.id)
+        url = flask.url_for('items.view', item_id=item.id)
         return flask.redirect(url)
     elif flask.request.method == 'POST' and delete_form.validate() and \
             (not ban_form or ban_form.validate()):
-        return _delete_torrent(torrent, delete_form, ban_form)
+        return _delete_torrent(item, delete_form, ban_form)
     else:
         if flask.request.method != 'POST':
             # Fill form data only if the POST didn't fail
-            form.category.data = torrent.sub_category.id_as_string
-            form.display_name.data = torrent.display_name
-            form.information.data = torrent.information
-            form.description.data = torrent.description
+            form.category.data = item.sub_category.id_as_string
+            form.display_name.data = item.display_name
+            form.information.data = item.information
+            form.description.data = item.description
 
-            form.is_hidden.data = torrent.hidden
-            form.is_remake.data = torrent.remake
-            form.is_complete.data = torrent.complete
-            form.is_anonymous.data = torrent.anonymous
-            form.is_trusted.data = torrent.trusted
-            form.is_comment_locked.data = torrent.comment_locked
+            form.is_hidden.data = item.hidden
+            form.is_remake.data = item.remake
+            form.is_complete.data = item.complete
+            form.is_anonymous.data = item.anonymous
+            form.is_trusted.data = item.trusted
+            form.is_comment_locked.data = item.comment_locked
 
         ipbanned = None
         if editor.is_moderator:
-            torrent_ip_banned = True
+            item_ip_banned = True
             user_ip_banned = True
 
-            # Archived torrents do not have a null uploader_ip
-            if torrent.uploader_ip:
-                torrent_ip_banned = models.Ban.banned(None, torrent.uploader_ip).first()
+            # Archived items do not have a null uploader_ip
+            if item.uploader_ip:
+                item_ip_banned = models.Ban.banned(None, item.uploader_ip).first()
 
-            if torrent.user:
-                user_ip_banned = models.Ban.banned(None, torrent.user.last_login_ip).first()
-            ipbanned = (torrent_ip_banned and user_ip_banned)
+            if item.user:
+                user_ip_banned = models.Ban.banned(None, item.user.last_login_ip).first()
+            ipbanned = (item_ip_banned and user_ip_banned)
 
         return flask.render_template('edit.html',
                                      form=form,
                                      delete_form=delete_form,
                                      ban_form=ban_form,
-                                     torrent=torrent,
+                                     item=item,
                                      ipbanned=ipbanned)
 
+@bp.route('/view/<int:item_id>/item')
+@bp.route('/download/<int:item_id>', endpoint='download')
+def download_item(item_id):
+    item = models.Item.by_id(item_id)
+
+    if not item:
+        flask.abort(404)
+
+    if item.deleted and not (flask.g.user and flask.g.user.is_moderator):
+        flask.abort(404)
+
+    #TODO: IMPLEMENT DOWNLOAD
+    return "Cool!"
+    # torrent_file, torrent_file_size = _make_torrent_file(torrent)
+    # disposition = 'inline; filename="{0}"; filename*=UTF-8\'\'{0}'.format(
+    #     quote(torrent.torrent_name.encode('utf-8')))
+
+    # resp = flask.Response(torrent_file)
+    # resp.headers['Content-Type'] = 'application/x-bittorrent'
+    # resp.headers['Content-Disposition'] = disposition
+    # resp.headers['Content-Length'] = torrent_file_size
+    # return resp
 
 def _delete_torrent(torrent, form, banform):
     editor = flask.g.user
     uploader = torrent.user
 
-    # Only allow admins edit deleted torrents
+    # Only allow admins edit deleted items
     if torrent.deleted and not (editor and editor.is_moderator):
         flask.abort(404)
 
@@ -228,10 +250,10 @@ def _delete_torrent(torrent, form, banform):
 
     if not action and not ban_torrent:
         flask.flash(flask.Markup('What the fuck are you doing?'), 'danger')
-        return flask.redirect(flask.url_for('torrents.edit', torrent_id=torrent.id))
+        return flask.redirect(flask.url_for('items.edit', item_id=torrent.id))
 
     if action and editor.is_moderator:
-        url = flask.url_for('torrents.view', torrent_id=torrent.id)
+        url = flask.url_for('items.view', item_id=torrent.id)
         if editor is not uploader:
             log = "Torrent [#{0}]({1}) has been {2}".format(torrent.id, url, action)
             adminlog = models.AdminLog(log=log, admin_id=editor.id)
@@ -254,10 +276,10 @@ def _delete_torrent(torrent, form, banform):
     if (banform.ban_user.data and (not uploader or uploader.is_banned)) or \
             (banform.ban_userip.data and ipbanned):
         flask.flash(flask.Markup('What the fuck are you doing?'), 'danger')
-        return flask.redirect(flask.url_for('torrents.edit', torrent_id=torrent.id))
+        return flask.redirect(flask.url_for('items.edit', item_id=torrent.id))
 
     flavor = "Nyaa" if app.config['SITE_FLAVOR'] == 'nyaa' else "Sukebei"
-    eurl = flask.url_for('torrents.view', torrent_id=torrent.id, _external=True)
+    eurl = flask.url_for('items.view', item_id=torrent.id, _external=True)
     reason = "[{0}#{1}]({2}) {3}".format(flavor, torrent.id, eurl, banform.reason.data)
     ban1 = models.Ban(admin_id=editor.id, reason=reason)
     ban2 = models.Ban(admin_id=editor.id, reason=reason)
@@ -292,7 +314,7 @@ def _delete_torrent(torrent, form, banform):
         ban2.user_ip = ban2.user_ip.packed
 
     log = "Uploader {0} of torrent [#{1}]({2}) has been banned.".format(
-        uploader_str, torrent.id, flask.url_for('torrents.view', torrent_id=torrent.id), action)
+        uploader_str, torrent.id, flask.url_for('items.view', item_id=torrent.id), action)
     adminlog = models.AdminLog(log=log, admin_id=editor.id)
     db.session.add(adminlog)
 
@@ -302,44 +324,11 @@ def _delete_torrent(torrent, form, banform):
 
     return flask.redirect(url)
 
-
-@bp.route('/view/<int:torrent_id>/magnet')
-def redirect_magnet(torrent_id):
-    torrent = models.Torrent.by_id(torrent_id)
-
-    if not torrent:
-        flask.abort(404)
-
-    return flask.redirect(torrents.create_magnet(torrent))
-
-
-@bp.route('/view/<int:torrent_id>/torrent')
-@bp.route('/download/<int:torrent_id>.torrent', endpoint='download')
-def download_torrent(torrent_id):
-    torrent = models.Torrent.by_id(torrent_id)
-
-    if not torrent or not torrent.has_torrent:
-        flask.abort(404)
-
-    if torrent.deleted and not (flask.g.user and flask.g.user.is_moderator):
-        flask.abort(404)
-
-    torrent_file, torrent_file_size = _make_torrent_file(torrent)
-    disposition = 'inline; filename="{0}"; filename*=UTF-8\'\'{0}'.format(
-        quote(torrent.torrent_name.encode('utf-8')))
-
-    resp = flask.Response(torrent_file)
-    resp.headers['Content-Type'] = 'application/x-bittorrent'
-    resp.headers['Content-Disposition'] = disposition
-    resp.headers['Content-Length'] = torrent_file_size
-    return resp
-
-
-@bp.route('/view/<int:torrent_id>/comment/<int:comment_id>/edit', methods=['POST'])
-def edit_comment(torrent_id, comment_id):
+@bp.route('/view/<int:item_id>/comment/<int:comment_id>/edit', methods=['POST'])
+def edit_comment(item_id, comment_id):
     if not flask.g.user:
         flask.abort(403)
-    torrent = models.Torrent.by_id(torrent_id)
+    torrent = models.Item.by_id(item_id)
     if not torrent:
         flask.abort(404)
 
@@ -369,11 +358,11 @@ def edit_comment(torrent_id, comment_id):
     return flask.jsonify({'comment': comment.text})
 
 
-@bp.route('/view/<int:torrent_id>/comment/<int:comment_id>/delete', methods=['POST'])
-def delete_comment(torrent_id, comment_id):
+@bp.route('/view/<int:item_id>/comment/<int:comment_id>/delete', methods=['POST'])
+def delete_comment(item_id, comment_id):
     if not flask.g.user:
         flask.abort(403)
-    torrent = models.Torrent.by_id(torrent_id)
+    torrent = models.Item.by_id(item_id)
     if not torrent:
         flask.abort(404)
 
@@ -384,7 +373,7 @@ def delete_comment(torrent_id, comment_id):
     if not (comment.user.id == flask.g.user.id or flask.g.user.is_superadmin):
         flask.abort(403)
 
-    if torrent_id != comment.torrent_id:
+    if item_id != comment.item_id:
         flask.abort(400)
 
     if torrent.comment_locked and not flask.g.user.is_moderator:
@@ -397,7 +386,7 @@ def delete_comment(torrent_id, comment_id):
     db.session.flush()
     torrent.update_comment_count()
 
-    url = flask.url_for('torrents.view', torrent_id=torrent.id)
+    url = flask.url_for('items.view', item_id=torrent.id)
     if flask.g.user.is_moderator:
         log = "Comment deleted on torrent [#{}]({})".format(torrent.id, url)
         adminlog = models.AdminLog(log=log, admin_id=flask.g.user.id)
@@ -409,13 +398,13 @@ def delete_comment(torrent_id, comment_id):
     return flask.redirect(url)
 
 
-@bp.route('/view/<int:torrent_id>/submit_report', endpoint='report', methods=['POST'])
-def submit_report(torrent_id):
+@bp.route('/view/<int:item_id>/submit_report', endpoint='report', methods=['POST'])
+def submit_report(item_id):
     if not flask.g.user or flask.g.user.age < app.config['RATELIMIT_ACCOUNT_AGE']:
         flask.abort(403)
 
     form = forms.ReportForm(flask.request.form)
-    torrent = models.Torrent.by_id(torrent_id)
+    torrent = models.Item.by_id(item_id)
     if not torrent:
         flask.abort(404)
     if torrent.banned:
@@ -426,7 +415,7 @@ def submit_report(torrent_id):
         report_reason = form.reason.data
         current_user_id = flask.g.user.id
         report = models.Report(
-            torrent_id=torrent_id,
+            item_id=item_id,
             user_id=current_user_id,
             reason=report_reason)
 
@@ -436,7 +425,7 @@ def submit_report(torrent_id):
     elif len(form.reason.data) == 0:
         flask.flash('Please give a report reason!', 'danger')
 
-    return flask.redirect(flask.url_for('torrents.view', torrent_id=torrent_id))
+    return flask.redirect(flask.url_for('items.view', item_id=item_id))
 
 
 @bp.route('/upload', methods=['GET', 'POST'])
@@ -461,10 +450,10 @@ def upload():
 
     if flask.request.method == 'POST' and upload_form.validate():
         try:
-            torrent = backend.handle_torrent_upload(upload_form, flask.g.user)
+            item = backend.handle_item_upload(upload_form, flask.g.user)
 
-            return flask.redirect(flask.url_for('torrents.view', torrent_id=torrent.id))
-        except backend.TorrentExtraValidationException:
+            return flask.redirect(flask.url_for('items.view', item_id=item.id))
+        except backend.ItemExtraValidationException:
             pass
 
     # If we get here with a POST, it means the form data was invalid: return a non-okay status
@@ -490,12 +479,3 @@ def _create_upload_category_choices():
         cat_name = ' - '.join(cat_names)
         choices.append((key, cat_name, is_main_cat))
     return choices
-
-
-def _make_torrent_file(torrent):
-    with open(torrent.info_dict_path, 'rb') as in_file:
-        bencoded_info = in_file.read()
-
-    bencoded_torrent_data = torrents.create_bencoded_torrent(torrent, bencoded_info)
-
-    return bencoded_torrent_data, len(bencoded_torrent_data)

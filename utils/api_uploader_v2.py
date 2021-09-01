@@ -61,7 +61,7 @@ environment_epillog = ('You may also provide environment variables NYAA_API_HOST
                        ' and NYAA_API_PASSWORD for connection info.')
 
 parser = argparse.ArgumentParser(
-    description='Upload torrents to Nyaa.si', epilog=environment_epillog)
+    description='Upload items to Nyaa.si', epilog=environment_epillog)
 
 parser.add_argument('--list-categories', default=False, action=CategoryPrintAction, nargs='?',
                     help='List torrent categories. Include "sukebei" to show Sukebei categories')

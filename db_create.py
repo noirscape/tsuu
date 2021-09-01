@@ -4,6 +4,8 @@ import sqlalchemy
 from nyaa import create_app, models
 from nyaa.extensions import db
 
+from config import USE_MYSQL
+
 app = create_app('config')
 
 NYAA_CATEGORIES = [
@@ -14,13 +16,6 @@ NYAA_CATEGORIES = [
     ('Pictures', ['Graphics', 'Photos']),
     ('Software', ['Applications', 'Games']),
 ]
-
-
-SUKEBEI_CATEGORIES = [
-    ('Art', ['Anime', 'Doujinshi', 'Games', 'Manga', 'Pictures']),
-    ('Real Life', ['Photobooks / Pictures', 'Videos']),
-]
-
 
 def add_categories(categories, main_class, sub_class):
     for main_cat_name, sub_cat_names in categories:
@@ -47,11 +42,6 @@ if __name__ == '__main__':
         if not nyaa_category_test:
             print('Adding Nyaa categories...')
             add_categories(NYAA_CATEGORIES, models.NyaaMainCategory, models.NyaaSubCategory)
-
-        sukebei_category_test = models.SukebeiMainCategory.query.first()
-        if not sukebei_category_test:
-            print('Adding Sukebei categories...')
-            add_categories(SUKEBEI_CATEGORIES, models.SukebeiMainCategory, models.SukebeiSubCategory)
 
         db.session.commit()
 

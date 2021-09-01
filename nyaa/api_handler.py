@@ -6,7 +6,7 @@ import re
 import flask
 
 from nyaa import backend, forms, models
-from nyaa.views.torrents import _create_upload_category_choices
+from nyaa.views.items import _create_upload_category_choices
 
 api_blueprint = flask.Blueprint('api', __name__, url_prefix='/api')
 
@@ -102,7 +102,7 @@ def v2_api_upload():
 
             # Create a response dict with relevant data
             torrent_metadata = {
-                'url': flask.url_for('torrents.view', torrent_id=torrent.id, _external=True),
+                'url': flask.url_for('items.view', torrent_id=torrent.id, _external=True),
                 'id': torrent.id,
                 'name': torrent.display_name,
                 'hash': torrent.info_hash.hex(),
@@ -135,11 +135,11 @@ def v2_api_info(torrent_id_or_hash):
     torrent = None
 
     if id_match:
-        torrent = models.Torrent.by_id(int(torrent_id_or_hash))
+        torrent = models.Item.by_id(int(torrent_id_or_hash))
     elif hex_hash_match:
         # Convert the string representation of a torrent hash back into a binary representation
         a2b_hash = binascii.unhexlify(torrent_id_or_hash)
-        torrent = models.Torrent.by_info_hash(a2b_hash)
+        torrent = models.Item.by_info_hash(a2b_hash)
     else:
         return flask.jsonify({'errors': ['Query was not a valid id or hash.']}), 400
 
@@ -148,7 +148,7 @@ def v2_api_info(torrent_id_or_hash):
     if not torrent:
         return flask.jsonify({'errors': ['Query was not a valid id or hash.']}), 400
 
-    # Only allow admins see deleted torrents
+    # Only allow admins see deleted items
     if torrent.deleted and not (viewer and viewer.is_superadmin):
         return flask.jsonify({'errors': ['Query was not a valid id or hash.']}), 400
 
@@ -165,7 +165,7 @@ def v2_api_info(torrent_id_or_hash):
     # Create a response dict with relevant data
     torrent_metadata = {
         'submitter': submitter,
-        'url': flask.url_for('torrents.view', torrent_id=torrent.id, _external=True),
+        'url': flask.url_for('items.view', torrent_id=torrent.id, _external=True),
         'id': torrent.id,
         'name': torrent.display_name,
 

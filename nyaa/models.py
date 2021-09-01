@@ -3,7 +3,7 @@ import os.path
 import re
 from datetime import datetime
 from enum import Enum, IntEnum
-from hashlib import md5
+from hashlib import md5, sha256
 from ipaddress import ip_address
 from urllib.parse import unquote as unquote_url
 from urllib.parse import urlencode
@@ -18,7 +18,6 @@ from sqlalchemy_fulltext import FullText
 from sqlalchemy_utils import ChoiceType, EmailType, PasswordType
 
 from nyaa.extensions import config, db
-from nyaa.torrents import create_magnet
 
 app = flask.current_app
 
@@ -31,7 +30,7 @@ if config['USE_MYSQL']:
     COL_UTF8MB4_BIN = 'utf8mb4_bin'
     COL_ASCII_GENERAL_CI = 'ascii_general_ci'
 else:
-    BinaryType = db.Binary
+    BinaryType = db.LargeBinary
     TextType = db.String
     MediumBlobType = db.BLOB
     COL_UTF8_GENERAL_CI = 'NOCASE'
@@ -92,7 +91,7 @@ class FlagProperty(object):
         self._set_flags(instance, new_flags)
 
 
-class TorrentFlags(IntEnum):
+class ItemFlags(IntEnum):
     NONE = 0
     ANONYMOUS = 1
     HIDDEN = 2
@@ -104,19 +103,17 @@ class TorrentFlags(IntEnum):
     COMMENT_LOCKED = 128
 
 
-class TorrentBase(DeclarativeHelperBase):
-    __tablename_base__ = 'torrents'
+class ItemBase(DeclarativeHelperBase):
+    __tablename_base__ = 'items'
 
     id = db.Column(db.Integer, primary_key=True)
-    info_hash = db.Column(BinaryType(length=20), unique=True, nullable=False, index=True)
     display_name = db.Column(db.String(length=255, collation=COL_UTF8_GENERAL_CI),
                              nullable=False, index=True)
-    torrent_name = db.Column(db.String(length=255), nullable=False)
+    item_directory = db.Column(db.String(length=255), nullable=False)
     information = db.Column(db.String(length=255), nullable=False)
     description = db.Column(TextType(collation=COL_UTF8MB4_BIN), nullable=False)
 
     filesize = db.Column(db.BIGINT, default=0, nullable=False, index=True)
-    encoding = db.Column(db.String(length=32), nullable=False)
     flags = db.Column(db.Integer, default=0, nullable=False, index=True)
 
     @declarative.declared_attr
@@ -124,8 +121,7 @@ class TorrentBase(DeclarativeHelperBase):
         # Even though this is same for both tables, declarative requires this
         return db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
 
-    uploader_ip = db.Column(db.Binary(length=16), default=None, nullable=True)
-    has_torrent = db.Column(db.Boolean, nullable=False, default=False)
+    uploader_ip = db.Column(BinaryType(length=16), default=None, nullable=True)
 
     comment_count = db.Column(db.Integer, default=0, nullable=False, index=True)
 
@@ -142,7 +138,7 @@ class TorrentBase(DeclarativeHelperBase):
 
     @declarative.declared_attr
     def redirect(cls):
-        fk = db.ForeignKey(cls._table_prefix('torrents.id'))
+        fk = db.ForeignKey(cls._table_prefix('items.id'))
         return db.Column(db.Integer, fk, nullable=True)
 
     @declarative.declared_attr
@@ -158,37 +154,31 @@ class TorrentBase(DeclarativeHelperBase):
 
     @declarative.declared_attr
     def user(cls):
-        return db.relationship('User', uselist=False, back_populates=cls._table_prefix('torrents'))
+        return db.relationship('User', uselist=False, back_populates=cls._table_prefix('items'))
 
     @declarative.declared_attr
     def main_category(cls):
         return db.relationship(cls._flavor_prefix('MainCategory'), uselist=False,
-                               back_populates='torrents', lazy="joined")
+                               back_populates='items', lazy="joined")
 
     @declarative.declared_attr
     def sub_category(cls):
-        join_sql = ("and_({0}SubCategory.id == foreign({0}Torrent.sub_category_id), "
-                    "{0}SubCategory.main_category_id == {0}Torrent.main_category_id)")
+        join_sql = ("and_({0}SubCategory.id == foreign({0}Item.sub_category_id), "
+                    "{0}SubCategory.main_category_id == {0}Item.main_category_id)")
         return db.relationship(cls._flavor_prefix('SubCategory'), uselist=False,
-                               backref='torrents', lazy="joined",
+                               backref='items', lazy="joined",
                                primaryjoin=join_sql.format(cls.__flavor__))
 
     @declarative.declared_attr
     def filelist(cls):
-        return db.relationship(cls._flavor_prefix('TorrentFilelist'), uselist=False,
-                               cascade="all, delete-orphan", back_populates='torrent')
+        return db.relationship(cls._flavor_prefix('ItemFilelist'), uselist=False,
+                               cascade="all, delete-orphan", back_populates='items')
 
     @declarative.declared_attr
     def stats(cls):
         return db.relationship(cls._flavor_prefix('Statistic'), uselist=False,
-                               cascade="all, delete-orphan", back_populates='torrent',
+                               cascade="all, delete-orphan", back_populates='items',
                                lazy='joined')
-
-    @declarative.declared_attr
-    def trackers(cls):
-        return db.relationship(cls._flavor_prefix('TorrentTrackers'), uselist=True,
-                               cascade="all, delete-orphan",
-                               order_by=cls._flavor_prefix('TorrentTrackers.order'))
 
     @declarative.declared_attr
     def comments(cls):
@@ -200,13 +190,13 @@ class TorrentBase(DeclarativeHelperBase):
 
     def update_comment_count(self):
         self.comment_count = db.session.query(func.count(
-            Comment.id)).filter_by(torrent_id=self.id).first()[0]
+            Comment.id)).filter_by(item_id=self.id).first()[0]
         return self.comment_count
 
     @classmethod
-    def update_comment_count_db(cls, torrent_id):
-        cls.query.filter_by(id=torrent_id).update({'comment_count': db.session.query(
-            func.count(Comment.id)).filter_by(torrent_id=torrent_id).as_scalar()}, False)
+    def update_comment_count_db(cls, item_id):
+        cls.query.filter_by(id=item_id).update({'comment_count': db.session.query(
+            func.count(Comment.id)).filter_by(item_id=item_id).as_scalar()}, False)
 
     @property
     def created_utc_timestamp(self):
@@ -235,39 +225,20 @@ class TorrentBase(DeclarativeHelperBase):
         return escape_markup(self.information)
 
     @property
-    def info_dict_path(self):
-        ''' Returns a path to the info_dict file in form of 'info_dicts/aa/bb/aabbccddee...' '''
-        info_hash = self.info_hash_as_hex
-        return os.path.join(app.config['BASE_DIR'], 'info_dicts',
-                            info_hash[0:2], info_hash[2:4], info_hash)
-
-    @property
-    def info_hash_as_b32(self):
-        return base64.b32encode(self.info_hash).decode('utf-8')
-
-    @property
-    def info_hash_as_hex(self):
-        return self.info_hash.hex()
-
-    @property
-    def magnet_uri(self):
-        return create_magnet(self)
-
-    @property
     def uploader_ip_string(self):
         if self.uploader_ip:
             return str(ip_address(self.uploader_ip))
 
     # Flag properties below
 
-    anonymous = FlagProperty(TorrentFlags.ANONYMOUS)
-    hidden = FlagProperty(TorrentFlags.HIDDEN)
-    deleted = FlagProperty(TorrentFlags.DELETED)
-    banned = FlagProperty(TorrentFlags.BANNED)
-    trusted = FlagProperty(TorrentFlags.TRUSTED)
-    remake = FlagProperty(TorrentFlags.REMAKE)
-    complete = FlagProperty(TorrentFlags.COMPLETE)
-    comment_locked = FlagProperty(TorrentFlags.COMMENT_LOCKED)
+    anonymous = FlagProperty(ItemFlags.ANONYMOUS)
+    hidden = FlagProperty(ItemFlags.HIDDEN)
+    deleted = FlagProperty(ItemFlags.DELETED)
+    banned = FlagProperty(ItemFlags.BANNED)
+    trusted = FlagProperty(ItemFlags.TRUSTED)
+    remake = FlagProperty(ItemFlags.REMAKE)
+    complete = FlagProperty(ItemFlags.COMPLETE)
+    comment_locked = FlagProperty(ItemFlags.COMMENT_LOCKED)
 
     # Class methods
 
@@ -275,31 +246,22 @@ class TorrentBase(DeclarativeHelperBase):
     def by_id(cls, id):
         return cls.query.get(id)
 
-    @classmethod
-    def by_info_hash(cls, info_hash):
-        return cls.query.filter_by(info_hash=info_hash).first()
 
-    @classmethod
-    def by_info_hash_hex(cls, info_hash_hex):
-        info_hash_bytes = bytearray.fromhex(info_hash_hex)
-        return cls.by_info_hash(info_hash_bytes)
-
-
-class TorrentFilelistBase(DeclarativeHelperBase):
-    __tablename_base__ = 'torrents_filelist'
+class ItemFilelistBase(DeclarativeHelperBase):
+    __tablename_base__ = 'item_filelist'
 
     __table_args__ = {'mysql_row_format': 'COMPRESSED'}
 
     @declarative.declared_attr
-    def torrent_id(cls):
-        fk = db.ForeignKey(cls._table_prefix('torrents.id'), ondelete="CASCADE")
+    def item_id(cls):
+        fk = db.ForeignKey(cls._table_prefix('items.id'), ondelete="CASCADE")
         return db.Column(db.Integer, fk, primary_key=True)
 
     filelist_blob = db.Column(MediumBlobType, nullable=True)
 
     @declarative.declared_attr
-    def torrent(cls):
-        return db.relationship(cls._flavor_prefix('Torrent'), uselist=False,
+    def items(cls):
+        return db.relationship(cls._flavor_prefix('Item'), uselist=False,
                                back_populates='filelist')
 
 
@@ -307,8 +269,8 @@ class StatisticBase(DeclarativeHelperBase):
     __tablename_base__ = 'statistics'
 
     @declarative.declared_attr
-    def torrent_id(cls):
-        fk = db.ForeignKey(cls._table_prefix('torrents.id'), ondelete="CASCADE")
+    def item_id(cls):
+        fk = db.ForeignKey(cls._table_prefix('items.id'), ondelete="CASCADE")
         return db.Column(db.Integer, fk, primary_key=True)
 
     seed_count = db.Column(db.Integer, default=0, nullable=False, index=True)
@@ -317,48 +279,9 @@ class StatisticBase(DeclarativeHelperBase):
     last_updated = db.Column(db.DateTime(timezone=False))
 
     @declarative.declared_attr
-    def torrent(cls):
-        return db.relationship(cls._flavor_prefix('Torrent'), uselist=False,
+    def items(cls):
+        return db.relationship(cls._flavor_prefix('Item'), uselist=False,
                                back_populates='stats')
-
-
-class Trackers(db.Model):
-    __tablename__ = 'trackers'
-
-    id = db.Column(db.Integer, primary_key=True)
-    uri = db.Column(db.String(length=255, collation=COL_UTF8_GENERAL_CI),
-                    nullable=False, unique=True)
-    is_webseed = db.Column(db.Boolean, nullable=False, default=False)
-    disabled = db.Column(db.Boolean, nullable=False, default=False)
-
-    @classmethod
-    def by_uri(cls, uri):
-        return cls.query.filter_by(uri=uri).first()
-
-
-class TorrentTrackersBase(DeclarativeHelperBase):
-    __tablename_base__ = 'torrent_trackers'
-
-    @declarative.declared_attr
-    def torrent_id(cls):
-        fk = db.ForeignKey(cls._table_prefix('torrents.id'), ondelete="CASCADE")
-        return db.Column(db.Integer, fk, primary_key=True)
-
-    @declarative.declared_attr
-    def tracker_id(cls):
-        fk = db.ForeignKey('trackers.id', ondelete="CASCADE")
-        return db.Column(db.Integer, fk, primary_key=True)
-
-    order = db.Column(db.Integer, nullable=False, index=True)
-
-    @declarative.declared_attr
-    def tracker(cls):
-        return db.relationship('Trackers', uselist=False, lazy='joined')
-
-    @classmethod
-    def by_torrent_id(cls, torrent_id):
-        return cls.query.filter_by(torrent_id=torrent_id).order_by(cls.order.desc())
-
 
 class MainCategoryBase(DeclarativeHelperBase):
     __tablename_base__ = 'main_categories'
@@ -371,8 +294,8 @@ class MainCategoryBase(DeclarativeHelperBase):
         return db.relationship(cls._flavor_prefix('SubCategory'), back_populates='main_category')
 
     @declarative.declared_attr
-    def torrents(cls):
-        return db.relationship(cls._flavor_prefix('Torrent'), back_populates='main_category')
+    def items(cls):
+        return db.relationship(cls._flavor_prefix('Item'), back_populates='main_category')
 
     def get_category_ids(self):
         return (self.id, 0)
@@ -421,9 +344,9 @@ class CommentBase(DeclarativeHelperBase):
     id = db.Column(db.Integer, primary_key=True)
 
     @declarative.declared_attr
-    def torrent_id(cls):
+    def item_id(cls):
         return db.Column(db.Integer, db.ForeignKey(
-            cls._table_prefix('torrents.id'), ondelete='CASCADE'), nullable=False)
+            cls._table_prefix('items.id'), ondelete='CASCADE'), nullable=False)
 
     @declarative.declared_attr
     def user_id(cls):
@@ -439,8 +362,8 @@ class CommentBase(DeclarativeHelperBase):
                                back_populates=cls._table_prefix('comments'), lazy="joined")
 
     @declarative.declared_attr
-    def torrent(cls):
-        return db.relationship(cls._flavor_prefix('Torrent'), uselist=False,
+    def item(cls):
+        return db.relationship(cls._flavor_prefix('Item'), uselist=False,
                                back_populates='comments')
 
     def __repr__(self):
@@ -493,14 +416,11 @@ class User(db.Model):
 
     created_time = db.Column(db.DateTime(timezone=False), default=datetime.utcnow)
     last_login_date = db.Column(db.DateTime(timezone=False), default=None, nullable=True)
-    last_login_ip = db.Column(db.Binary(length=16), default=None, nullable=True)
-    registration_ip = db.Column(db.Binary(length=16), default=None, nullable=True)
+    last_login_ip = db.Column(BinaryType(length=16), default=None, nullable=True)
+    registration_ip = db.Column(BinaryType(length=16), default=None, nullable=True)
 
-    nyaa_torrents = db.relationship('NyaaTorrent', back_populates='user', lazy='dynamic')
+    nyaa_items = db.relationship('NyaaItem', back_populates='user', lazy='dynamic')
     nyaa_comments = db.relationship('NyaaComment', back_populates='user', lazy='dynamic')
-
-    sukebei_torrents = db.relationship('SukebeiTorrent', back_populates='user', lazy='dynamic')
-    sukebei_comments = db.relationship('SukebeiComment', back_populates='user', lazy='dynamic')
 
     bans = db.relationship('Ban', uselist=True, foreign_keys='Ban.user_id')
 
@@ -540,8 +460,6 @@ class User(db.Model):
                 # Default image (https://en.gravatar.com/site/implement/images/#default-image)
                 'd': default_url,
                 # Image rating (https://en.gravatar.com/site/implement/images/#rating)
-                # Nyaa: PG-rated, Sukebei: X-rated
-                'r': 'pg' if app.config['SITE_FLAVOR'] == 'nyaa' else 'x',
             }
             # construct the url
             return 'https://www.gravatar.com/avatar/{}?{}'.format(
@@ -652,15 +570,14 @@ class User(db.Model):
     def satisfies_trusted_reqs(self):
         num_total = 0
         downloads_total = 0
-        for ts_flavor, t_flavor in ((NyaaStatistic, NyaaTorrent),
-                                    (SukebeiStatistic, SukebeiTorrent)):
+        for ts_flavor, t_flavor in ((NyaaStatistic, NyaaItem)):
             uploads = db.session.query(func.count(t_flavor.id)).\
                 filter(t_flavor.user == self).\
-                filter(t_flavor.flags.op('&')(int(TorrentFlags.REMAKE)).is_(False)).scalar()
+                filter(t_flavor.flags.op('&')(int(ItemFlags.REMAKE)).is_(False)).scalar()
             dls = db.session.query(func.sum(ts_flavor.download_count)).\
                 join(t_flavor).\
                 filter(t_flavor.user == self).\
-                filter(t_flavor.flags.op('&')(int(TorrentFlags.REMAKE)).is_(False)).scalar()
+                filter(t_flavor.flags.op('&')(int(ItemFlags.REMAKE)).is_(False)).scalar()
             num_total += uploads or 0
             downloads_total += dls or 0
         return (num_total >= config['TRUSTED_MIN_UPLOADS'] and
@@ -729,9 +646,9 @@ class ReportBase(DeclarativeHelperBase):
     status = db.Column(ChoiceType(ReportStatus, impl=db.Integer()), nullable=False)
 
     @declarative.declared_attr
-    def torrent_id(cls):
+    def item_id(cls):
         return db.Column(db.Integer, db.ForeignKey(
-            cls._table_prefix('torrents.id'), ondelete='CASCADE'), nullable=False)
+            cls._table_prefix('items.id'), ondelete='CASCADE'), nullable=False)
 
     @declarative.declared_attr
     def user_id(cls):
@@ -742,11 +659,11 @@ class ReportBase(DeclarativeHelperBase):
         return db.relationship('User', uselist=False, lazy="joined")
 
     @declarative.declared_attr
-    def torrent(cls):
-        return db.relationship(cls._flavor_prefix('Torrent'), uselist=False, lazy="joined")
+    def item(cls):
+        return db.relationship(cls._flavor_prefix('Item'), uselist=False, lazy="joined")
 
-    def __init__(self, torrent_id, user_id, reason):
-        self.torrent_id = torrent_id
+    def __init__(self, item_id, user_id, reason):
+        self.item_id = item_id
         self.user_id = user_id
         self.reason = reason
         self.status = ReportStatus.IN_REVIEW
@@ -770,7 +687,7 @@ class ReportBase(DeclarativeHelperBase):
 
     @classmethod
     def remove_reviewed(cls, id):
-        return cls.query.filter(cls.torrent_id == id, cls.status == 0).delete()
+        return cls.query.filter(cls.item_id == id, cls.status == 0).delete()
 
 
 class Ban(db.Model):
@@ -780,7 +697,7 @@ class Ban(db.Model):
     created_time = db.Column(db.DateTime(timezone=False), default=datetime.utcnow)
     admin_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
-    user_ip = db.Column(db.Binary(length=16), nullable=True)
+    user_ip = db.Column(BinaryType(length=16), nullable=True)
     reason = db.Column(db.String(length=2048), nullable=False)
 
     admin = db.relationship('User', uselist=False, lazy='joined', foreign_keys=[admin_id])
@@ -942,40 +859,25 @@ class TrustedReview(db.Model):
 
 # Actually declare our site-specific classes
 
-# Torrent
-class NyaaTorrent(TorrentBase, db.Model):
+# Item
+class NyaaItem(ItemBase, db.Model):
     __flavor__ = 'Nyaa'
-
-
-class SukebeiTorrent(TorrentBase, db.Model):
-    __flavor__ = 'Sukebei'
 
 
 # Fulltext models for MySQL
 if config['USE_MYSQL']:
-    class NyaaTorrentNameSearch(FullText, NyaaTorrent):
-        __fulltext_columns__ = ('display_name',)
-        __table_args__ = {'extend_existing': True}
-
-    class SukebeiTorrentNameSearch(FullText, SukebeiTorrent):
+    class NyaaItemNameSearch(FullText, NyaaItem):
         __fulltext_columns__ = ('display_name',)
         __table_args__ = {'extend_existing': True}
 else:
     # Bogus classes for Sqlite
-    class NyaaTorrentNameSearch(object):
-        pass
-
-    class SukebeiTorrentNameSearch(object):
+    class NyaaItemNameSearch(object):
         pass
 
 
-# TorrentFilelist
-class NyaaTorrentFilelist(TorrentFilelistBase, db.Model):
+# ItemFileList
+class NyaaItemFilelist(ItemFilelistBase, db.Model):
     __flavor__ = 'Nyaa'
-
-
-class SukebeiTorrentFilelist(TorrentFilelistBase, db.Model):
-    __flavor__ = 'Sukebei'
 
 
 # Statistic
@@ -983,26 +885,9 @@ class NyaaStatistic(StatisticBase, db.Model):
     __flavor__ = 'Nyaa'
 
 
-class SukebeiStatistic(StatisticBase, db.Model):
-    __flavor__ = 'Sukebei'
-
-
-# TorrentTrackers
-class NyaaTorrentTrackers(TorrentTrackersBase, db.Model):
-    __flavor__ = 'Nyaa'
-
-
-class SukebeiTorrentTrackers(TorrentTrackersBase, db.Model):
-    __flavor__ = 'Sukebei'
-
-
 # MainCategory
 class NyaaMainCategory(MainCategoryBase, db.Model):
     __flavor__ = 'Nyaa'
-
-
-class SukebeiMainCategory(MainCategoryBase, db.Model):
-    __flavor__ = 'Sukebei'
 
 
 # SubCategory
@@ -1010,35 +895,18 @@ class NyaaSubCategory(SubCategoryBase, db.Model):
     __flavor__ = 'Nyaa'
 
 
-class SukebeiSubCategory(SubCategoryBase, db.Model):
-    __flavor__ = 'Sukebei'
-
-
 # Comment
 class NyaaComment(CommentBase, db.Model):
     __flavor__ = 'Nyaa'
-
-
-class SukebeiComment(CommentBase, db.Model):
-    __flavor__ = 'Sukebei'
 
 
 # AdminLog
 class NyaaAdminLog(AdminLogBase, db.Model):
     __flavor__ = 'Nyaa'
 
-
-class SukebeiAdminLog(AdminLogBase, db.Model):
-    __flavor__ = 'Sukebei'
-
-
 # Report
 class NyaaReport(ReportBase, db.Model):
     __flavor__ = 'Nyaa'
-
-
-class SukebeiReport(ReportBase, db.Model):
-    __flavor__ = 'Sukebei'
 
 
 # TrackerApi
@@ -1046,33 +914,14 @@ class NyaaTrackerApi(TrackerApiBase, db.Model):
     __flavor__ = 'Nyaa'
 
 
-class SukebeiTrackerApi(TrackerApiBase, db.Model):
-    __flavor__ = 'Sukebei'
-
-
-# Choose our defaults for models.Torrent etc
-if config['SITE_FLAVOR'] == 'nyaa':
-    Torrent = NyaaTorrent
-    TorrentFilelist = NyaaTorrentFilelist
-    Statistic = NyaaStatistic
-    TorrentTrackers = NyaaTorrentTrackers
-    MainCategory = NyaaMainCategory
-    SubCategory = NyaaSubCategory
-    Comment = NyaaComment
-    AdminLog = NyaaAdminLog
-    Report = NyaaReport
-    TorrentNameSearch = NyaaTorrentNameSearch
-    TrackerApi = NyaaTrackerApi
-
-elif config['SITE_FLAVOR'] == 'sukebei':
-    Torrent = SukebeiTorrent
-    TorrentFilelist = SukebeiTorrentFilelist
-    Statistic = SukebeiStatistic
-    TorrentTrackers = SukebeiTorrentTrackers
-    MainCategory = SukebeiMainCategory
-    SubCategory = SukebeiSubCategory
-    Comment = SukebeiComment
-    AdminLog = SukebeiAdminLog
-    Report = SukebeiReport
-    TorrentNameSearch = SukebeiTorrentNameSearch
-    TrackerApi = SukebeiTrackerApi
+# Defaults; site flavors are deprecated but this is a useful mechanic
+Item = NyaaItem
+Filelist = NyaaItemFilelist
+Statistic = NyaaStatistic
+MainCategory = NyaaMainCategory
+SubCategory = NyaaSubCategory
+Comment = NyaaComment
+AdminLog = NyaaAdminLog
+Report = NyaaReport
+ItemNameSearch = NyaaItemNameSearch
+TrackerApi = NyaaTrackerApi

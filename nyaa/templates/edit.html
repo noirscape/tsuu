@@ -1,14 +1,14 @@
 {% extends "layout.html" %}
-{% block title %}Edit {{ torrent.display_name }} :: {{ config.SITE_NAME }}{% endblock %}
+{% block title %}Edit {{ display_name }} :: {{ config.SITE_NAME }}{% endblock %}
 {% block body %}
 {% from "_formhelpers.html" import render_field %}
 {% from "_formhelpers.html" import render_markdown_editor %}
 
-{% set torrent_url = url_for('torrents.view', torrent_id=torrent.id) %}
+{% set item_url = url_for('items.view', item_id=item.id) %}
 <h1>
-	Edit Torrent <a href="{{ torrent_url }}">#{{torrent.id}}</a>
-	{% if (torrent.user != None) and (torrent.user != g.user) %}
-	(by <a href="{{ url_for('users.view_user', user_name=torrent.user.username) }}">{{ torrent.user.username }}</a>)
+	Edit Item <a href="{{ item_url }}">#{{item.id}}</a>
+	{% if (user != None) and (user != g.user) %}
+	(by <a href="{{ url_for('users.view_user', user_name=item.user.username) }}">{{ item.user.username }}</a>)
 	{% endif %}
 </h1>
 
@@ -28,18 +28,18 @@
 		{{ render_field(form.information, class_='form-control', placeholder='Your website or IRC channel') }}
 		</div>
 		<div class="col-md-6">
-			<label class="control-label">Torrent flags</label><br>
+			<label class="control-label">Item flags</label><br>
 			<div class="btn-group" data-toggle="buttons">
 				{# Only allow changing anonymous status when an uploader exists #}
-				{% if torrent.uploader_id %}
-				<label class="btn btn-default {% if torrent.anonymous %}active{% endif %}" title="Upload torrent anonymously (don't display your username)">
+				{% if uploader_id %}
+				<label class="btn btn-default {% if anonymous %}active{% endif %}" title="Upload item anonymously (don't display your username)">
 					{{ form.is_anonymous }}
 					<span class="glyphicon glyphicon-check"></span>
 					<span class="glyphicon glyphicon-unchecked"></span>
 					Anonymous
 				</label>
 				{% endif %}
-				<label class="btn btn-grey {% if torrent.hidden %}active{% endif %}" title="Hide torrent from listing">
+				<label class="btn btn-grey {% if hidden %}active{% endif %}" title="Hide item from listing">
 					{{ form.is_hidden }}
 					<span class="glyphicon glyphicon-check"></span>
 					<span class="glyphicon glyphicon-unchecked"></span>
@@ -48,20 +48,20 @@
 			</div>
 			<div class="hidden-xl"><br></div>
 			<div class="btn-group" data-toggle="buttons">
-				<label class="btn btn-danger {% if torrent.remake %}active{% endif %}" title="This torrent is derived from another release">
+				<label class="btn btn-danger {% if remake %}active{% endif %}" title="This item is derived from another release">
 					{{ form.is_remake }}
 					<span class="glyphicon glyphicon-check"></span>
 					<span class="glyphicon glyphicon-unchecked"></span>
 					Remake
 				</label>
-				<label class="btn btn-warning {% if torrent.complete %}active{% endif %}" title="This torrent is a complete batch (eg. season)">
+				<label class="btn btn-warning {% if complete %}active{% endif %}" title="This item is a complete batch (eg. season)">
 					{{ form.is_complete }}
 					<span class="glyphicon glyphicon-check"></span>
 					<span class="glyphicon glyphicon-unchecked"></span>
 					Complete
 				</label>
 				{% if g.user.is_trusted %}
-				<label class="btn btn-success {% if torrent.trusted %}active{% endif %}" title="Mark torrent trusted">
+				<label class="btn btn-success {% if trusted %}active{% endif %}" title="Mark item trusted">
 					{{ form.is_trusted }}
 					<span class="glyphicon glyphicon-check"></span>
 					<span class="glyphicon glyphicon-unchecked"></span>
@@ -69,7 +69,7 @@
 				</label>
 				{% endif %}
 				{% if g.user.is_moderator %}
-				<label class="btn btn-default {% if torrent.comment_locked %}active{% endif %}" title="Lock comments">
+				<label class="btn btn-default {% if comment_locked %}active{% endif %}" title="Lock comments">
 					{{ form.is_comment_locked }}
 					<span class="glyphicon glyphicon-check"></span>
 					<span class="glyphicon glyphicon-unchecked"></span>
@@ -105,10 +105,10 @@
 					{{ delete_form.csrf_token }}
 
 					<p>
-						{% if torrent.deleted %}
-						This torrent is <strong>deleted</strong>{% if torrent.banned %} and <strong>banned</strong>{% endif %}.<br>
+						{% if deleted %}
+						This item is <strong>deleted</strong>{% if banned %} and <strong>banned</strong>{% endif %}.<br>
 						{% endif %}
-						{% if torrent.user and torrent.user.is_banned %}
+						{% if user and user.is_banned %}
 						The uploader is <strong>banned</strong>.<br>
 						{% endif %}
 						{% if ipbanned %}
@@ -116,54 +116,54 @@
 						{% endif %}
 					</p>
 
-{% if not torrent.deleted %}
+{% if not deleted %}
 					<p class="lead">
-						Delete torrent.
+						Delete item.
 						{{ delete_form.delete(class="btn btn-danger pull-right") }}
 					</p>
 					<p>
-						Deleted torrents are retained for backup purposes.<br>
-						You (or someone else) will be able to reupload the torrent.
+						Deleted items are retained for backup purposes.<br>
+						You (or someone else) will be able to reupload the item.
 					</p>
 
 					{% if g.user.is_moderator %}
 					<hr>
 					<p class="lead">
-						Delete and ban torrent.
+						Delete and ban item.
 						{{ delete_form.ban(class="btn btn-danger pull-right") }}
 					</p>
 					<p>
-						Soft deletes the torrent.<br>
+						Soft deletes the item.<br>
 						Bans it from the tracker and disallows reuploading it.
 					</p>
 					{% endif %}
-{% else %} {# if torrent.deleted #}
+{% else %} {# if deleted #}
 					<p class="lead">
-						Undelete{% if torrent.banned %} and unban{% endif %} torrent.
-						{% if torrent.banned %}
+						Undelete{% if item.banned %} and unban{% endif %} item.
+						{% if item.banned %}
 						{{ delete_form.undelete(value="Undelete & Unban", class="btn btn-info pull-right") }}
 						{% else %}
 						{{ delete_form.undelete(class="btn btn-info pull-right") }}
 						{% endif %}
 					</p>
 					<p>
-						Undeletes{% if torrent.banned %} and unbans{% endif %} this torrent.
+						Undeletes{% if banned %} and unbans{% endif %} this item.
 					</p>
 
-					{% if torrent.banned %}
+					{% if banned %}
 					<hr>
 					<p class="lead">
-						Unban torrent.
+						Unban item.
 						{{ delete_form.unban(class="btn btn-info pull-right") }}
 					</p>
 					<p>
-						Unbans torrent without undeleting it.<br>
-						Allows reuploading this torrent again.
+						Unbans item without undeleting it.<br>
+						Allows reuploading this item again.
 					</p>
 					{% else %}
 					<hr>
 					<p class="lead">
-						Ban torrent.
+						Ban item.
 						{{ delete_form.ban(value="Ban", class="btn btn-danger pull-right") }}
 					</p>
 					<p>
@@ -173,44 +173,44 @@
 {% endif %}
 
 {% if ban_form %}
-{% if (torrent.user and not torrent.user.is_banned) or not ipbanned %}
+{% if (user and not user.is_banned) or not ipbanned %}
 					<hr>
 					<p class="lead">
-					{% if torrent.deleted %}
-						{% if torrent.banned %}
+					{% if deleted %}
+						{% if banned %}
 						Ban uploader.
 						{% else %}
-						Ban torrent and ban uploader.
+						Ban item and ban uploader.
 						{% endif %}
 					{% else %}
-						Delete and ban torrent and ban uploader.
+						Delete and ban item and ban uploader.
 					{% endif %}
 					</p>
 					<p>
-					{% if torrent.deleted %}
-						{% if torrent.banned %}
+					{% if deleted %}
+						{% if banned %}
 						Bans the uploader.
 						{% else %}
 						Bans it from the tracker and disallows reuploading it.<br>
 						Additionally bans the uploader.
 						{% endif %}
 					{% else %}
-						Soft deletes the torrent.<br>
+						Soft deletes the <br>
 						Bans it from the tracker and disallows reuploading it.<br>
 						Additionally bans the uploader.
 					{% endif %}
 					</p>
 					{{ render_field(ban_form.reason, class_="form-control", placeholder="Specify a ban reason.") }}<br>
 
-			{% if torrent.user %}
+			{% if user %}
 					<div class="pull-left">
-						{% if torrent.user.is_banned %}
+						{% if user.is_banned %}
 						<button type="button" class="btn btn-danger disabled">Already banned</button>
 						{% else %}
 						{% set text = "Ban User" %}
-						{% if not torrent.banned %}
+						{% if not banned %}
 							{% set text = "Ban and Ban User" %}
-							{% if not torrent.deleted %}
+							{% if not deleted %}
 								{% set text = "Delete & Ban and Ban User" %}
 							{% endif %}
 						{% endif %}
@@ -223,9 +223,9 @@
 						<button type="button" class="btn btn-danger disabled">Already IP banned</button>
 						{% else %}
 						{% set text = "Ban User+IP" %}
-						{% if not torrent.banned %}
+						{% if not banned %}
 							{% set text = "Ban and Ban User+IP" %}
-							{% if not torrent.deleted %}
+							{% if not deleted %}
 								{% set text = "Delete & Ban and Ban User+IP" %}
 							{% endif %}
 						{% endif %}
@@ -242,9 +242,9 @@
 						<button type="button" class="btn btn-danger disabled">Already IP banned</button>
 						{% else %}
 						{% set text = "Ban IP" %}
-						{% if not torrent.banned %}
+						{% if not banned %}
 							{% set text = "Ban and Ban IP" %}
-							{% if not torrent.deleted %}
+							{% if not deleted %}
 								{% set text = "Delete & Ban and Ban IP" %}
 							{% endif %}
 						{% endif %}

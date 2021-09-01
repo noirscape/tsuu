@@ -1,79 +1,79 @@
 {% extends "layout.html" %}
-{% block title %}{{ torrent.display_name }} :: {{ config.SITE_NAME }}{% endblock %}
+{% block title %}{{ item.display_name }} :: {{ config.SITE_NAME }}{% endblock %}
 {% block metatags %}
-{% set uploader_name = torrent.user.username if (torrent.user and not torrent.anonymous) else 'Anonymous' %}
-<meta property="og:description" content="{{ category_name(torrent.sub_category.id_as_string) }} | {{ torrent.filesize | filesizeformat(True) }} | Uploaded by {{ uploader_name }} on {{ torrent.created_time.strftime('%Y-%m-%d') }}">
+{% set uploader_name = item.user.username if (item.user and not item.anonymous) else 'Anonymous' %}
+<meta property="og:description" content="{{ category_name(item.sub_category.id_as_string) }} | {{ item.filesize | filesizeformat(True) }} | Uploaded by {{ uploader_name }} on {{ item.created_time.strftime('%Y-%m-%d') }}">
 {% endblock %}
 {% block body %}
 {% from "_formhelpers.html" import render_field %}
-<div class="panel panel-{% if torrent.deleted %}deleted{% elif torrent.remake %}danger{% elif torrent.trusted %}success{% else %}default{% endif %}">
-	<div class="panel-heading"{% if torrent.hidden %} style="background-color: darkgray;"{% endif %}>
+<div class="panel panel-{% if item.deleted %}deleted{% elif item.remake %}danger{% elif item.trusted %}success{% else %}default{% endif %}">
+	<div class="panel-heading"{% if item.hidden %} style="background-color: darkgray;"{% endif %}>
 		<h3 class="panel-title">
 			{% if can_edit %}
-			<a href="{{ url_for('torrents.edit', torrent_id=torrent.id) }}" title="Edit torrent"><i class="fa fa-fw fa-pencil"></i></a>
+			<a href="{{ url_for('items.edit', item_id=item.id) }}" title="Edit item"><i class="fa fa-fw fa-pencil"></i></a>
 			{% endif %}
-			{{ torrent.display_name }}
+			{{ item.display_name }}
 		</h3>
 	</div>
 	<div class="panel-body">
 		<div class="row">
 			<div class="col-md-1">Category:</div>
 			<div class="col-md-5">
-				<a href="{{ url_for('main.home', c=torrent.main_category.id_as_string) }}">{{ torrent.main_category.name }}</a> - <a href="{{ url_for('main.home', c=torrent.sub_category.id_as_string) }}">{{ torrent.sub_category.name }}</a>
+				<a href="{{ url_for('main.home', c=item.main_category.id_as_string) }}">{{ item.main_category.name }}</a> - <a href="{{ url_for('main.home', c=item.sub_category.id_as_string) }}">{{ item.sub_category.name }}</a>
 			</div>
 
 			<div class="col-md-1">Date:</div>
-			<div class="col-md-5" data-timestamp="{{ torrent.created_utc_timestamp|int }}">{{ torrent.created_time.strftime('%Y-%m-%d %H:%M UTC') }}</div>
+			<div class="col-md-5" data-timestamp="{{ item.created_utc_timestamp|int }}">{{ item.created_time.strftime('%Y-%m-%d %H:%M UTC') }}</div>
 		</div>
 
 		<div class="row">
 			<div class="col-md-1">Submitter:</div>
 			<div class="col-md-5">
-				{% set user_url = torrent.user and url_for('users.view_user', user_name=torrent.user.username) %}
-				{%- if not torrent.anonymous and torrent.user -%}
-				<a class="text-{{ torrent.user.userlevel_color }}" href="{{ user_url }}" data-toggle="tooltip" title="{{ torrent.user.userlevel_str }}">{{ torrent.user.username }}</a>
+				{% set user_url = item.user and url_for('users.view_user', user_name=item.user.username) %}
+				{%- if not item.anonymous and item.user -%}
+				<a class="text-{{ item.user.userlevel_color }}" href="{{ user_url }}" data-toggle="tooltip" title="{{ item.user.userlevel_str }}">{{ item.user.username }}</a>
 				{%- else -%}
-				Anonymous {% if torrent.user and (g.user == torrent.user or g.user.is_moderator) %}(<a class="text-{{ torrent.user.userlevel_color }}" href="{{ user_url }}" data-toggle="tooltip" title="{{ torrent.user.userlevel_str }}">{{ torrent.user.username }}</a>){% endif %}
+				Anonymous {% if item.user and (g.user == item.user or g.user.is_moderator) %}(<a class="text-{{ item.user.userlevel_color }}" href="{{ user_url }}" data-toggle="tooltip" title="{{ item.user.userlevel_str }}">{{ item.user.username }}</a>){% endif %}
 				{%- endif -%}
-				{% if g.user and g.user.is_superadmin and torrent.uploader_ip %}
-				({{ torrent.uploader_ip_string }})
+				{% if g.user and g.user.is_superadmin and item.uploader_ip %}
+				({{ item.uploader_ip_string }})
 				{% endif %}
 			</div>
 
 			<div class="col-md-1">Seeders:</div>
-			<div class="col-md-5"><span style="color: green;">{% if config.ENABLE_SHOW_STATS %}{{ torrent.stats.seed_count }}{% else %}Coming soon{% endif %}</span></div>
+			<div class="col-md-5"><span style="color: green;">{% if config.ENABLE_SHOW_STATS %}{{ item.stats.seed_count }}{% else %}Coming soon{% endif %}</span></div>
 
 		</div>
 
 		<div class="row">
 			<div class="col-md-1">Information:</div>
 			<div class="col-md-5">
-				{% if torrent.information %}
-				{{ torrent.information_as_link | safe }}
+				{% if item.information %}
+				{{ item.information_as_link | safe }}
 				{% else %}
 				No information.
 				{% endif%}
 			</div>
 
 			<div class="col-md-1">Leechers:</div>
-			<div class="col-md-5"><span style="color: red;">{% if config.ENABLE_SHOW_STATS %}{{ torrent.stats.leech_count }}{% else %}Coming soon{% endif %}</span></div>
+			<div class="col-md-5"><span style="color: red;">{% if config.ENABLE_SHOW_STATS %}{{ item.stats.leech_count }}{% else %}Coming soon{% endif %}</span></div>
 		</div>
 
 		<div class="row">
 			<div class="col-md-1">File size:</div>
-			<div class="col-md-5">{{ torrent.filesize | filesizeformat(True) }}</div>
+			<div class="col-md-5">{{ item.filesize | filesizeformat(True) }}</div>
 
 			<div class="col-md-1">Completed:</div>
-			<div class="col-md-5">{% if config.ENABLE_SHOW_STATS %}{{ torrent.stats.download_count }}{% else %}Coming soon{% endif %}</div>
+			<div class="col-md-5">{% if config.ENABLE_SHOW_STATS %}{{ item.stats.download_count }}{% else %}Coming soon{% endif %}</div>
 		</div>
 		<div class="row">
 			<div class="col-md-offset-6 col-md-1">Info hash:</div>
-			<div class="col-md-5"><kbd>{{ torrent.info_hash_as_hex }}</kbd></div>
+			<div class="col-md-5"><kbd>{{ item.item_directory }}</kbd></div>
 		</div>
 	</div><!--/.panel-body -->
 
 	<div class="panel-footer clearfix">
-		{% if torrent.has_torrent %}<a href="{{ url_for('torrents.download', torrent_id=torrent.id )}}"><i class="fa fa-download fa-fw"></i>Download Torrent</a> or {% endif %}<a href="{{ torrent.magnet_uri }}" class="card-footer-item"><i class="fa fa-magnet fa-fw"></i>Magnet</a>
+		<a href="{{ url_for('items.download', item_id=item.id )}}"><i class="fa fa-download fa-fw"></i>Download Item</a><!-- or <a href="{{ item.magnet_uri }}" class="card-footer-item"><i class="fa fa-magnet fa-fw"></i>Magnet</a>> -->
 		{% if g.user and g.user.age > config['RATELIMIT_ACCOUNT_AGE'] %}
 		<button type="button" class="btn btn-xs btn-danger pull-right" data-toggle="modal" data-target="#reportModal">
 			Report
@@ -84,16 +84,16 @@
 
 <div class="panel panel-default">
 	<div markdown-text class="panel-body" id="torrent-description">
-		{%- if torrent.description -%}
+		{%- if item.description -%}
 		{# Escape newlines into html entities because CF strips blank newlines #}
-		{{- torrent.description | escape | replace('\r\n', '\n') | replace('\n', '&#10;'|safe) -}}
+		{{- item.description | escape | replace('\r\n', '\n') | replace('\n', '&#10;'|safe) -}}
 		{%- else -%}
 		#### No description.
 		{%- endif -%}
 	</div>
 </div>
 
-{% cache 86400, "filelist", torrent.info_hash_as_hex %}
+{% cache 86400, "filelist", item.item_directory %}
 {% if files and files.__len__() <= config.MAX_FILES_VIEW %}
 <div class="panel panel-default">
 	<div class="panel-heading">
@@ -129,7 +129,7 @@
 <div class="panel panel-default">
 	<div class="panel-heading panel-heading-collapse">
 		<h3 class="panel-title">
-			File list is not available for this torrent.
+			File list is not available for this item.
 		</h3>
 	</div>
 </div>
@@ -140,7 +140,7 @@
 	<div class="panel-heading">
 		<a data-toggle="collapse" href="#collapse-comments" role="button" aria-expanded="{% if g.user and g.user.preferences.hide_comments %}false{% else %}true{% endif %}" aria-controls="collapse-comments">
 		<h3 class="panel-title">
-			Comments - {{ torrent.comment_count }}
+			Comments - {{ item.comment_count }}
 		</h3>
 		</a>
 	</div>
@@ -151,7 +151,7 @@
 			<div class="col-md-2">
 				<p>
 					<a class="text-{{ comment.user.userlevel_color }}" href="{{ url_for('users.view_user', user_name=comment.user.username) }}" data-toggle="tooltip" title="{{ comment.user.userlevel_str }}">{{ comment.user.username }}</a>
-					{% if comment.user.id == torrent.uploader_id and not torrent.anonymous %}
+					{% if comment.user.id == item.uploader_id and not item.anonymous %}
 					(uploader)
 					{% endif %}
 				</p>
@@ -164,11 +164,11 @@
 					<small data-timestamp-swap data-timestamp-title data-timestamp="{{ comment.edited_utc_timestamp }}" title="{{ comment.edited_time }}">(edited)</small>
 					{% endif %}
 					<div class="comment-actions">
-						{% if g.user.id == comment.user_id and not comment.editing_limit_exceeded and (not torrent.comment_locked or comment_form) %}
+						{% if g.user.id == comment.user_id and not comment.editing_limit_exceeded and (not item.comment_locked or comment_form) %}
 						<button class="btn btn-xs edit-comment" title="Edit"{% if config.EDITING_TIME_LIMIT %} data-until="{{ comment.editable_until|int }}"{% endif %}>Edit</button>
 						{% endif %}
-						{% if g.user.is_superadmin or (g.user.id == comment.user_id and not torrent.comment_locked and not comment.editing_limit_exceeded) %}
-						<form class="delete-comment-form" action="{{ url_for('torrents.delete_comment', torrent_id=torrent.id, comment_id=comment.id) }}" method="POST">
+						{% if g.user.is_superadmin or (g.user.id == comment.user_id and not item.comment_locked and not comment.editing_limit_exceeded) %}
+						<form class="delete-comment-form" action="{{ url_for('items.delete_comment', item_id=item.id, comment_id=comment.id) }}" method="POST">
 							<button name="submit" type="submit" class="btn btn-danger btn-xs" title="Delete">Delete</button>
 						</form>
 						{% endif %}
@@ -178,7 +178,7 @@
 					{# Escape newlines into html entities because CF strips blank newlines #}
 					<div markdown-text class="comment-content" id="torrent-comment{{ comment.id }}">{{- comment.text | escape | replace('\r\n', '\n') | replace('\n', '&#10;'|safe) -}}</div>
 					{% if g.user.id == comment.user_id and comment_form %}
-					<form class="edit-comment-box" action="{{ url_for('torrents.edit_comment', torrent_id=torrent.id, comment_id=comment.id) }}" method="POST">
+					<form class="edit-comment-box" action="{{ url_for('items.edit_comment', item_id=item.id, comment_id=comment.id) }}" method="POST">
 						{{ comment_form.csrf_token }}
 						<div class="form-group">
 							<textarea class="form-control" name="comment" autofocus>{{- comment.text | escape | replace('\r\n', '\n') | replace('\n', '&#10;'|safe) -}}</textarea>
@@ -212,7 +212,7 @@
 	</div>
 
 	{% endfor %}
-	{% if torrent.comment_locked %}
+	{% if item.comment_locked %}
 	<div class="alert alert-warning">
 		<p>
 			<i class="fa fa-lock" aria-hidden="true"></i>
@@ -262,16 +262,16 @@
 			<div class="modal-header">
 				<button type="button" class="close" data-dismiss="modal" aria-label="Close"><span
 						aria-hidden="true">&times;</span></button>
-				<h4 class="modal-title">Report torrent #{{ torrent.id }}</h4>
+				<h4 class="modal-title">Report item #{{ item.id }}</h4>
 			</div>
 			<div class="modal-body">
 				<div class="alert alert-warning" role="alert">
-					Before submitting a report, please check that the torrent
+					Before submitting a report, please check that the item
 					actually breaks <a href="{{ url_for('site.rules') }}">the
 					rules</a>. Useless reports like "download is slow" or
 					"thanks" can get you banned from the site.
 				</div>
-				<form method="POST" action="{{ url_for('torrents.report', torrent_id=torrent.id) }}">
+				<form method="POST" action="{{ url_for('items.report', item_id=item.id) }}">
 					{{ report_form.csrf_token }}
 					{{ render_field(report_form.reason, class_='form-control', maxlength=255) }}
 					<div style="float: right;">

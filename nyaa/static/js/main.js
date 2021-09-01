@@ -31,13 +31,13 @@ $(document).ready(function() {
 		var input = $(this).parent().prev().find(':text'),
 			log = numFiles > 1 ? numFiles + ' files selected' : label;
 
-		if (label.endsWith('.torrent')) {
-			fileWarning.fadeOut('fast');
-		} else {
-			fileWarning.fadeIn('fast');
-			input.val('');
-			return false;
-		}
+		// if (label.endsWith('.torrent')) {
+		// 	fileWarning.fadeOut('fast');
+		// } else {
+		// 	fileWarning.fadeIn('fast');
+		// 	input.val('');
+		// 	return false;
+		// }
 
 		if (input.length) {
 			input.val(log);
@@ -47,26 +47,26 @@ $(document).ready(function() {
 	});
 
 	// Drag & Drop zone for upload page
-	$('body').on('dragenter', function(event) {
-		event.preventDefault();
-		dropZone.css({ 'visibility': 'visible', 'opacity': 1 });
-	});
+	// $('body').on('dragenter', function(event) {
+	// 	event.preventDefault();
+	// 	dropZone.css({ 'visibility': 'visible', 'opacity': 1 });
+	// });
 
-	dropZone.on('dragleave', function(event) {
-		event.preventDefault();
-		$(this).css({ 'visibility': 'hidden', 'opacity': 0 });
-	});
+	// dropZone.on('dragleave', function(event) {
+	// 	event.preventDefault();
+	// 	$(this).css({ 'visibility': 'hidden', 'opacity': 0 });
+	// });
 
-	dropZone.on('dragover', function(event) {
-		event.preventDefault();
-	});
+	// dropZone.on('dragover', function(event) {
+	// 	event.preventDefault();
+	// });
 
-	dropZone.on('drop dragdrop', function(event) {
-		event.preventDefault();
-		var files = event.originalEvent.dataTransfer.files;
-		$('#torrent_file')[0].files = files;
-		$(this).css({ 'visibility': 'hidden', 'opacity': 0 });
-	});
+	// dropZone.on('drop dragdrop', function(event) {
+	// 	event.preventDefault();
+	// 	var files = event.originalEvent.dataTransfer.files;
+	// 	$('#torrent_file')[0].files = files;
+	// 	$(this).css({ 'visibility': 'hidden', 'opacity': 0 });
+	// });
 
 	// Collapsible file lists
 	$('.torrent-file-list a.folder').click(function(e) {

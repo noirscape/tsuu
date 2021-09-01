@@ -29,7 +29,7 @@ RAID_MODE_REGISTER_MESSAGE = 'Registration is currently being limited.'
 #############
 
 # What the site identifies itself as. This affects templates, not database stuff.
-SITE_NAME = 'Nyaa'
+SITE_NAME = 'fNyaa'
 # What the both sites are labeled under (used for eg. email subjects)
 GLOBAL_SITE_NAME = 'Nyaa.si'
 
@@ -46,8 +46,8 @@ SECRET_KEY = '***'
 USE_RECAPTCHA = False
 # Require email validation
 USE_EMAIL_VERIFICATION = False
-# Use MySQL or Sqlite3 (mostly deprecated)
-USE_MYSQL = True
+# Use MySQL or Sqlite3
+USE_MYSQL = False
 # Show seeds/peers/completions in torrent list/page
 ENABLE_SHOW_STATS = True
 
@@ -106,34 +106,26 @@ SMTP_USERNAME = '***'
 SMTP_PASSWORD = '***'
 
 
-# The maximum number of files a torrent can contain
+# The maximum number of files an item can contain
 # until the site says "Too many files to display."
 MAX_FILES_VIEW = 1000
-
-# Verify uploaded torrents have the given tracker in them?
-ENFORCE_MAIN_ANNOUNCE_URL = False
-MAIN_ANNOUNCE_URL = 'http://127.0.0.1:6881/announce'
-
-# Tracker API integration - don't mind this
-TRACKER_API_URL = 'http://127.0.0.1:6881/api'
-TRACKER_API_AUTH = 'topsecret'
 
 #############
 ## Account ##
 #############
 
-# Limit torrent upload rate
+# Limit item upload rate
 RATELIMIT_UPLOADS = True
 RATELIMIT_ACCOUNT_AGE = 7 * 24 * 3600
-# After uploading MAX_UPLOAD_BURST torrents within UPLOAD_BURST_DURATION,
+# After uploading MAX_UPLOAD_BURST item within UPLOAD_BURST_DURATION,
 # the following uploads must be at least UPLOAD_TIMEOUT seconds after the previous upload.
 MAX_UPLOAD_BURST = 5
 UPLOAD_BURST_DURATION = 45 * 60
 UPLOAD_TIMEOUT = 15 * 60
 
-# Torrents uploaded without an account must be at least this big in total (bytes)
+# Items uploaded without an account must be at least this big in total (bytes)
 # Set to 0 to disable
-MINIMUM_ANONYMOUS_TORRENT_SIZE = 1 * 1024 * 1024
+MINIMUM_ANONYMOUS_ITEM_SIZE = 1 * 1024 * 1024
 
 # Minimum age for an account not to be served a captcha (seconds)
 # Relies on USE_RECAPTCHA. Set to 0 to disable.
@@ -143,8 +135,8 @@ ACCOUNT_RECAPTCHA_AGE = 7 * 24 * 3600  # A week
 # (0 disables the limitation)
 PER_IP_ACCOUNT_COOLDOWN = 24 * 3600
 
-# Backup original .torrent uploads
-BACKUP_TORRENT_FOLDER = 'torrents'
+# Item storage folder
+ITEM_FOLDER = 'items'
 
 ############
 ## Search ##
@@ -163,19 +155,6 @@ COUNT_CACHE_DURATION = 30
 # Use baked queries for database search
 USE_BAKED_SEARCH = False
 
-# Use better searching with ElasticSearch
-# See README.MD on setup!
-USE_ELASTIC_SEARCH = False
-# Highlight matches (for debugging)
-ENABLE_ELASTIC_SEARCH_HIGHLIGHT = False
-
-# Max ES search results, do not set over 10000
-ES_MAX_SEARCH_RESULT = 1000
-# ES index name generally (nyaa or sukebei)
-ES_INDEX_NAME = SITE_FLAVOR
-# ES hosts
-ES_HOSTS = ['localhost:9200']
-
 ################
 ## Commenting ##
 ################
@@ -186,7 +165,7 @@ EDITING_TIME_LIMIT = 0
 
 # Whether to use Gravatar or just always use the default avatar
 # (Useful if run as development instance behind NAT/firewall)
-ENABLE_GRAVATAR = True
+ENABLE_GRAVATAR = False
 
 ##########################
 ## Trusted Requirements ##
@@ -195,7 +174,7 @@ ENABLE_GRAVATAR = True
 # Minimum number of uploads the user needs to have in order to apply for trusted
 TRUSTED_MIN_UPLOADS = 10
 # Minimum number of cumulative downloads the user needs to have across their
-# torrents in order to apply for trusted
+# items in order to apply for trusted
 TRUSTED_MIN_DOWNLOADS = 10000
 # Number of days an applicant needs to wait before re-applying
 TRUSTED_REAPPLY_COOLDOWN = 90

@@ -5,7 +5,7 @@ from nyaa.views import (  # isort:skip
     admin,
     main,
     site,
-    torrents,
+    items,
     users,
 )
 
@@ -45,5 +45,5 @@ def register_views(flask_app):
     flask_app.register_blueprint(admin.bp)
     flask_app.register_blueprint(main.bp)
     flask_app.register_blueprint(site.bp)
-    flask_app.register_blueprint(torrents.bp)
+    flask_app.register_blueprint(items.bp)
     flask_app.register_blueprint(users.bp)

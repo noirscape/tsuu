@@ -12,7 +12,7 @@ from itsdangerous import BadSignature, URLSafeSerializer
 from nyaa import forms, models
 from nyaa.extensions import db
 from nyaa.search import (DEFAULT_MAX_SEARCH_RESULT, DEFAULT_PER_PAGE, SERACH_PAGINATE_DISPLAY_MSG,
-                         _generate_query_string, search_db, search_db_baked, search_elastic)
+                         _generate_query_string, search_db, search_db_baked)
 from nyaa.utils import admin_only, chain_get, sha1_hash
 
 app = flask.current_app
@@ -147,60 +147,22 @@ def view_user(user_name):
 
     # Use elastic search for term searching
     rss_query_string = _generate_query_string(search_term, category, quality_filter, user_name)
-    use_elastic = app.config.get('USE_ELASTIC_SEARCH')
-    if use_elastic and search_term:
-        query_args['term'] = search_term
-
-        max_search_results = app.config.get('ES_MAX_SEARCH_RESULT', DEFAULT_MAX_SEARCH_RESULT)
-
-        # Only allow up to (max_search_results / page) pages
-        max_page = min(query_args['page'], int(math.ceil(max_search_results / results_per_page)))
-
-        query_args['page'] = max_page
-        query_args['max_search_results'] = max_search_results
-
-        query_results = search_elastic(**query_args)
-
-        max_results = min(max_search_results, query_results['hits']['total'])
-        # change p= argument to whatever you change page_parameter to or pagination breaks
-        pagination = Pagination(p=query_args['page'], per_page=results_per_page,
-                                total=max_results, bs_version=3, page_parameter='p',
-                                display_msg=SERACH_PAGINATE_DISPLAY_MSG)
-        return flask.render_template('user.html',
-                                     use_elastic=True,
-                                     pagination=pagination,
-                                     torrent_query=query_results,
-                                     search=query_args,
-                                     user=user,
-                                     user_page=True,
-                                     rss_filter=rss_query_string,
-                                     admin_form=admin_form,
-                                     ban_form=ban_form,
-                                     nuke_form=nuke_form,
-                                     bans=bans,
-                                     ipbanned=ipbanned)
-    # Similar logic as home page
+    if app.config['USE_BAKED_SEARCH']:
+        query = search_db_baked(**query_args)
     else:
-        if use_elastic:
-            query_args['term'] = ''
-        else:
-            query_args['term'] = search_term or ''
-        if app.config['USE_BAKED_SEARCH']:
-            query = search_db_baked(**query_args)
-        else:
-            query = search_db(**query_args)
-        return flask.render_template('user.html',
-                                     use_elastic=False,
-                                     torrent_query=query,
-                                     search=query_args,
-                                     user=user,
-                                     user_page=True,
-                                     rss_filter=rss_query_string,
-                                     admin_form=admin_form,
-                                     ban_form=ban_form,
-                                     nuke_form=nuke_form,
-                                     bans=bans,
-                                     ipbanned=ipbanned)
+        query = search_db(**query_args)
+    return flask.render_template('user.html',
+                                    use_elastic=False,
+                                    torrent_query=query,
+                                    search=query_args,
+                                    user=user,
+                                    user_page=True,
+                                    rss_filter=rss_query_string,
+                                    admin_form=admin_form,
+                                    ban_form=ban_form,
+                                    nuke_form=nuke_form,
+                                    bans=bans,
+                                    ipbanned=ipbanned)
 
 
 @bp.route('/user/<user_name>/comments')
@@ -263,9 +225,9 @@ def activate_user(payload):
     return flask.redirect(flask.url_for('main.home'))
 
 
-@bp.route('/user/<user_name>/nuke/torrents', methods=['POST'])
+@bp.route('/user/<user_name>/nuke/items', methods=['POST'])
 @admin_only
-def nuke_user_torrents(user_name):
+def nuke_user_items(user_name):
     user = models.User.by_username(user_name)
     if not user:
         flask.abort(404)
@@ -276,7 +238,7 @@ def nuke_user_torrents(user_name):
     url = flask.url_for('users.view_user', user_name=user.username)
     nyaa_banned = 0
     sukebei_banned = 0
-    for t in chain(user.nyaa_torrents, user.sukebei_torrents):
+    for t in chain(user.nyaa_items):
         t.deleted = True
         t.banned = True
         t.stats.seed_count = 0
@@ -292,14 +254,14 @@ def nuke_user_torrents(user_name):
     for log_flavour, num in ((models.NyaaAdminLog, nyaa_banned),
                              (models.SukebeiAdminLog, sukebei_banned)):
         if num > 0:
-            log = "Nuked {0} torrents of [{1}]({2})".format(num,
+            log = "Nuked {0} items of [{1}]({2})".format(num,
                                                             user.username,
                                                             url)
             adminlog = log_flavour(log=log, admin_id=flask.g.user.id)
             db.session.add(adminlog)
 
     db.session.commit()
-    flask.flash('Torrents of {0} have been nuked.'.format(user.username),
+    flask.flash('Items of {0} have been nuked.'.format(user.username),
                 'success')
     return flask.redirect(url)
 
@@ -317,21 +279,17 @@ def nuke_user_comments(user_name):
     url = flask.url_for('users.view_user', user_name=user.username)
     nyaa_deleted = 0
     sukebei_deleted = 0
-    nyaa_torrents = set()
-    sukebei_torrents = set()
-    for c in chain(user.nyaa_comments, user.sukebei_comments):
-        nyaa_torrents.add(c.torrent_id)
-        sukebei_torrents.add(c.torrent_id)
+    nyaa_items = set()
+    for c in chain(user.nyaa_comments):
+        nyaa_items.add(c.torrent_id)
         db.session.delete(c)
         if isinstance(c, models.NyaaComment):
             nyaa_deleted += 1
         else:
             sukebei_deleted += 1
 
-    for tid in nyaa_torrents:
+    for tid in nyaa_items:
         models.NyaaTorrent.update_comment_count_db(tid)
-    for tid in sukebei_torrents:
-        models.SukebeiTorrent.update_comment_count_db(tid)
 
     for log_flavour, num in ((models.NyaaAdminLog, nyaa_deleted),
                              (models.SukebeiAdminLog, sukebei_deleted)):

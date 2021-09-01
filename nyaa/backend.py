@@ -1,3 +1,5 @@
+import hashlib
+from io import BytesIO
 import json
 import os
 import re
@@ -38,8 +40,13 @@ def sanitize_string(string, replacement='\uFFFD'):
     ''' Simply replaces characters based on a regex '''
     return ILLEGAL_XML_CHARS_RE.sub(replacement, string)
 
+def calculate_short_hash(data):
+    h = hashlib.sha256()
+    d = data.read()
+    h.update(d)
+    return h.hexdigest()[:6]
 
-class TorrentExtraValidationException(Exception):
+class ItemExtraValidationException(Exception):
     def __init__(self, errors={}):
         self.errors = errors
 
@@ -124,37 +131,37 @@ def validate_torrent_post_upload(torrent, upload_form=None):
             # Clear out the wtforms dict to force a regeneration
             upload_form._errors = None
 
-        raise TorrentExtraValidationException(errors)
+        raise ItemExtraValidationException(errors)
 
 
 def check_uploader_ratelimit(user):
     ''' Figures out if user (or IP address from flask.request) may
         upload within upload ratelimit.
-        Returns a tuple of current datetime, count of torrents uploaded
+        Returns a tuple of current datetime, count of items uploaded
         within burst duration and timestamp for next allowed upload. '''
     now = datetime.utcnow()
     next_allowed_time = now
 
-    Torrent = models.Torrent
+    Item = models.Item
 
     def filter_uploader(query):
         if user:
             return query.filter(sqlalchemy.or_(
-                Torrent.user == user,
-                Torrent.uploader_ip == ip_address(flask.request.remote_addr).packed))
+                Item.user == user,
+                Item.uploader_ip == ip_address(flask.request.remote_addr).packed))
         else:
-            return query.filter(Torrent.uploader_ip == ip_address(flask.request.remote_addr).packed)
+            return query.filter(Item.uploader_ip == ip_address(flask.request.remote_addr).packed)
 
     time_range_start = datetime.utcnow() - timedelta(seconds=app.config['UPLOAD_BURST_DURATION'])
-    # Count torrents uploaded by user/ip within given time period
-    torrent_count_query = db.session.query(sqlalchemy.func.count(Torrent.id))
+    # Count items uploaded by user/ip within given time period
+    torrent_count_query = db.session.query(sqlalchemy.func.count(Item.id))
     torrent_count = filter_uploader(torrent_count_query).filter(
-        Torrent.created_time >= time_range_start).scalar()
+        Item.created_time >= time_range_start).scalar()
 
     # If user has reached burst limit...
     if torrent_count >= app.config['MAX_UPLOAD_BURST']:
         # Check how long ago their latest torrent was (we know at least one will exist)
-        last_torrent = filter_uploader(Torrent.query).order_by(Torrent.created_time.desc()).first()
+        last_torrent = filter_uploader(Item.query).order_by(Item.created_time.desc()).first()
         after_timeout = last_torrent.created_time + timedelta(seconds=app.config['UPLOAD_TIMEOUT'])
 
         if now < after_timeout:
@@ -163,12 +170,14 @@ def check_uploader_ratelimit(user):
     return now, torrent_count, next_allowed_time
 
 
-def handle_torrent_upload(upload_form, uploading_user=None, fromAPI=False):
-    ''' Stores a torrent to the database.
-        May throw TorrentExtraValidationException if the form/torrent fails
+def handle_item_upload(upload_form, uploading_user=None, fromAPI=False):
+    ''' Stores an item to the database.
+        May throw ItemExtraValidationException if the form/item fails
         post-WTForm validation! Exception messages will also be added to their
         relevant fields on the given form. '''
-    torrent_data = upload_form.torrent_file.parsed_data
+    print("Handling upload")
+    item_data = BytesIO()
+    upload_form.submission_file.data.save(item_data)
 
     # Anonymous uploaders and non-trusted uploaders
     no_or_new_account = (not uploading_user
@@ -180,34 +189,20 @@ def handle_torrent_upload(upload_form, uploading_user=None, fromAPI=False):
         if next_time > now:
             # This will flag the dialog in upload.html red and tell API users what's wrong
             upload_form.ratelimit.errors = ["You've gone over the upload ratelimit."]
-            raise TorrentExtraValidationException()
+            raise ItemExtraValidationException()
 
     if not uploading_user:
         if app.config['RAID_MODE_LIMIT_UPLOADS']:
             # XXX TODO: rename rangebanned to something more generic
             upload_form.rangebanned.errors = [app.config['RAID_MODE_UPLOADS_MESSAGE']]
-            raise TorrentExtraValidationException()
+            raise ItemExtraValidationException()
         elif models.RangeBan.is_rangebanned(ip_address(flask.request.remote_addr).packed):
             upload_form.rangebanned.errors = ["Your IP is banned from "
                                               "uploading anonymously."]
-            raise TorrentExtraValidationException()
-
-    # Delete existing torrent which is marked as deleted
-    if torrent_data.db_id is not None:
-        old_torrent = models.Torrent.by_id(torrent_data.db_id)
-        db.session.delete(old_torrent)
-        db.session.commit()
-        # Delete physical file after transaction has been committed
-        _delete_info_dict(old_torrent)
-
-    # The torrent has been  validated and is safe to access with ['foo'] etc - all relevant
-    # keys and values have been checked for (see UploadForm in forms.py for details)
-    info_dict = torrent_data.torrent_dict['info']
-
-    changed_to_utf8 = _replace_utf8_values(torrent_data.torrent_dict)
+            raise ItemExtraValidationException()
 
     # Use uploader-given name or grab it from the torrent
-    display_name = upload_form.display_name.data.strip() or info_dict['name'].decode('utf8').strip()
+    display_name = upload_form.display_name.data.strip()
     information = (upload_form.information.data or '').strip()
     description = (upload_form.description.data or '').strip()
 
@@ -216,172 +211,81 @@ def handle_torrent_upload(upload_form, uploading_user=None, fromAPI=False):
     information = sanitize_string(information)
     description = sanitize_string(description)
 
-    torrent_filesize = info_dict.get('length') or sum(
-        f['length'] for f in info_dict.get('files'))
+    item_data.seek(0, os.SEEK_END)
+    item_filesize = item_data.tell()
+    item_data.seek(0)
 
-    # In case no encoding, assume UTF-8.
-    torrent_encoding = torrent_data.torrent_dict.get('encoding', b'utf-8').decode('utf-8')
+    item_id = calculate_short_hash(item_data)
+    item_data.seek(0)
 
-    torrent = models.Torrent(id=torrent_data.db_id,
-                             info_hash=torrent_data.info_hash,
-                             display_name=display_name,
-                             torrent_name=torrent_data.filename,
-                             information=information,
-                             description=description,
-                             encoding=torrent_encoding,
-                             filesize=torrent_filesize,
-                             user=uploading_user,
-                             uploader_ip=ip_address(flask.request.remote_addr).packed)
+    item = models.Item(display_name=display_name,
+                            item_directory=item_id,
+                            information=information,
+                            description=description,
+                            filesize=item_filesize,
+                            user=uploading_user,
+                            uploader_ip=ip_address(flask.request.remote_addr).packed)
+    print("Made model")
 
-    # Store bencoded info_dict
-    info_dict_path = torrent.info_dict_path
+    # Store file
+    item_directory = f"{app.config['ITEM_FOLDER']}/{item.item_directory}"
+    filename = upload_form.submission_file.data.filename
+    os.makedirs(item_directory, exist_ok=True)
 
-    info_dict_dir = os.path.dirname(info_dict_path)
-    os.makedirs(info_dict_dir, exist_ok=True)
+    with open(os.path.join(item_directory, filename), 'wb') as out_file:
+        out_file.write(item_data.getbuffer())
+    print("stored file")
 
-    with open(info_dict_path, 'wb') as out_file:
-        out_file.write(torrent_data.bencoded_info_dict)
-
-    torrent.stats = models.Statistic()
-    torrent.has_torrent = True
+    item.stats = models.Statistic()
 
     # Fields with default value will be None before first commit, so set .flags
-    torrent.flags = 0
+    item.flags = 0
 
-    torrent.anonymous = upload_form.is_anonymous.data if uploading_user else True
-    torrent.hidden = upload_form.is_hidden.data
-    torrent.remake = upload_form.is_remake.data
-    torrent.complete = upload_form.is_complete.data
+    item.anonymous = upload_form.is_anonymous.data if uploading_user else True
+    item.hidden = upload_form.is_hidden.data
+    item.remake = upload_form.is_remake.data
+    item.complete = upload_form.is_complete.data
     # Copy trusted status from user if possible
     can_mark_trusted = uploading_user and uploading_user.is_trusted
     # To do, automatically mark trusted if user is trusted unless user specifies otherwise
-    torrent.trusted = upload_form.is_trusted.data if can_mark_trusted else False
+    item.trusted = upload_form.is_trusted.data if can_mark_trusted else False
 
-    # Only allow mods to upload locked torrents
+    # Only allow mods to upload locked items
     can_mark_locked = uploading_user and uploading_user.is_moderator
-    torrent.comment_locked = upload_form.is_comment_locked.data if can_mark_locked else False
+    item.comment_locked = upload_form.is_comment_locked.data if can_mark_locked else False
 
     # Set category ids
-    torrent.main_category_id, torrent.sub_category_id = \
+    item.main_category_id, item.sub_category_id = \
         upload_form.category.parsed_data.get_category_ids()
 
-    # To simplify parsing the filelist, turn single-file torrent into a list
-    torrent_filelist = info_dict.get('files')
+    print("making tree")
+    # Recurse over the item directory to create the file list
+    def get_file_tree(root):
+        def file_tree(path, d):
+            name = os.path.basename(path)
 
-    used_path_encoding = changed_to_utf8 and 'utf-8' or torrent_encoding
+            if os.path.isdir(path):
+                d[name] = {}
+                for x in os.listdir(path):
+                    file_tree(os.path.join(path,x), d[name])
+            else:
+                # Path is a file; save it
+                d[name] = os.path.getsize(path)
+            return d
 
-    parsed_file_tree = dict()
-    if not torrent_filelist:
-        # If single-file, the root will be the file-tree (no directory)
-        file_tree_root = parsed_file_tree
-        torrent_filelist = [{'length': torrent_filesize, 'path': [info_dict['name']]}]
-    else:
-        # If multi-file, use the directory name as root for files
-        file_tree_root = parsed_file_tree.setdefault(
-            info_dict['name'].decode(used_path_encoding), {})
+        return file_tree(root, dict())
 
-    # Parse file dicts into a tree
-    for file_dict in torrent_filelist:
-        # Decode path parts from utf8-bytes
-        path_parts = [path_part.decode(used_path_encoding) for path_part in file_dict['path']]
-
-        filename = path_parts.pop()
-        current_directory = file_tree_root
-
-        for directory in path_parts:
-            current_directory = current_directory.setdefault(directory, {})
-
-        # Don't add empty filenames (BitComet directory)
-        if filename:
-            current_directory[filename] = file_dict['length']
-
-    parsed_file_tree = utils.sorted_pathdict(parsed_file_tree)
+    parsed_file_tree = get_file_tree(item_directory)
+    print("made tree")
 
     json_bytes = json.dumps(parsed_file_tree, separators=(',', ':')).encode('utf8')
-    torrent.filelist = models.TorrentFilelist(filelist_blob=json_bytes)
+    item.filelist = models.Filelist(filelist_blob=json_bytes)
 
-    db.session.add(torrent)
+    db.session.add(item)
     db.session.flush()
-
-    # Store the users trackers
-    trackers = OrderedSet()
-    announce = torrent_data.torrent_dict.get('announce', b'').decode('ascii')
-    if announce:
-        trackers.add(announce)
-
-    # List of lists with single item
-    announce_list = torrent_data.torrent_dict.get('announce-list', [])
-    for announce in announce_list:
-        trackers.add(announce[0].decode('ascii'))
-
-    # Store webseeds
-    # qBittorrent doesn't omit url-list but sets it as '' even when there are no webseeds
-    webseed_list = torrent_data.torrent_dict.get('url-list') or []
-    if isinstance(webseed_list, bytes):
-        webseed_list = [webseed_list]  # qB doesn't contain a sole url in a list
-    webseeds = OrderedSet(webseed.decode('utf-8') for webseed in webseed_list)
-
-    # Remove our trackers, maybe? TODO ?
-
-    # Search for/Add trackers in DB
-    db_trackers = OrderedSet()
-    for announce in trackers:
-        tracker = models.Trackers.by_uri(announce)
-
-        # Insert new tracker if not found
-        if not tracker:
-            tracker = models.Trackers(uri=announce)
-            db.session.add(tracker)
-            db.session.flush()
-        elif tracker.is_webseed:
-            # If we have an announce marked webseed (user error, malicy?), reset it.
-            # Better to have "bad" announces than "hiding" proper announces in webseeds/url-list.
-            tracker.is_webseed = False
-            db.session.flush()
-
-        db_trackers.add(tracker)
-
-    # Same for webseeds
-    for webseed_url in webseeds:
-        webseed = models.Trackers.by_uri(webseed_url)
-
-        if not webseed:
-            webseed = models.Trackers(uri=webseed_url, is_webseed=True)
-            db.session.add(webseed)
-            db.session.flush()
-
-        # Don't add trackers into webseeds
-        if webseed.is_webseed:
-            db_trackers.add(webseed)
-
-    # Store tracker refs in DB
-    for order, tracker in enumerate(db_trackers):
-        torrent_tracker = models.TorrentTrackers(torrent_id=torrent.id,
-                                                 tracker_id=tracker.id, order=order)
-        db.session.add(torrent_tracker)
-
-    # Before final commit, validate the torrent again
-    validate_torrent_post_upload(torrent, upload_form)
-
-    # Add to tracker whitelist
-    db.session.add(models.TrackerApi(torrent.info_hash, 'insert'))
-
     db.session.commit()
 
-    # Store the actual torrent file as well
-    torrent_file = upload_form.torrent_file.data
-    if app.config.get('BACKUP_TORRENT_FOLDER'):
-        torrent_file.seek(0, 0)
-
-        torrent_dir = app.config['BACKUP_TORRENT_FOLDER']
-        os.makedirs(torrent_dir, exist_ok=True)
-
-        torrent_path = os.path.join(torrent_dir, '{}.{}'.format(
-            torrent.id, secure_filename(torrent_file.filename)))
-        torrent_file.save(torrent_path)
-    torrent_file.close()
-
-    return torrent
+    return item
 
 
 def _delete_info_dict(torrent):

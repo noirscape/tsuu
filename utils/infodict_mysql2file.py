@@ -28,8 +28,8 @@ cur.execute(
             info_hash,
             info_dict
         FROM
-            {0}_torrents
-        JOIN {0}_torrents_info ON torrent_id = id
+            {0}_items
+        JOIN {0}_items_info ON torrent_id = id
     """.format(prefix))
 
 for row in cur:

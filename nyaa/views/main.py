@@ -10,7 +10,7 @@ from flask_paginate import Pagination
 from nyaa import models
 from nyaa.extensions import db
 from nyaa.search import (DEFAULT_MAX_SEARCH_RESULT, DEFAULT_PER_PAGE, SERACH_PAGINATE_DISPLAY_MSG,
-                         _generate_query_string, search_db, search_db_baked, search_elastic)
+                         _generate_query_string, search_db, search_db_baked)
 from nyaa.utils import chain_get
 from nyaa.views.account import logout
 
@@ -113,12 +113,12 @@ def home(rss):
         base32_infohash_match = re.match(r'(?i)^([a-z0-9]{32})$', search_term)
         if infohash_match:
             # Check for info hash in database
-            matched_torrent = models.Torrent.by_info_hash_hex(infohash_match.group(1))
+            matched_torrent = models.Item.by_info_hash_hex(infohash_match.group(1))
             special_results['infohash_torrent'] = matched_torrent
         elif base32_infohash_match:
             # Convert base32 to info_hash
             info_hash = base64.b32decode(base32_infohash_match.group(1))
-            matched_torrent = models.Torrent.by_info_hash(info_hash)
+            matched_torrent = models.Item.by_info_hash(info_hash)
             special_results['infohash_torrent'] = matched_torrent
 
     query_args = {
@@ -143,68 +143,29 @@ def home(rss):
         flask.flash(flask.Markup('You were redirected here because '
                                  'the given hash matched this torrent.'), 'info')
         # Redirect user from search to the torrent if we found one with the specific info_hash
-        return flask.redirect(flask.url_for('torrents.view', torrent_id=infohash_torrent.id))
+        return flask.redirect(flask.url_for('items.view', torrent_id=infohash_torrent.id))
 
-    # If searching, we get results from elastic search
-    use_elastic = app.config.get('USE_ELASTIC_SEARCH')
-    if use_elastic and search_term:
-        query_args['term'] = search_term
+    query_args['term'] = search_term or ''
 
-        max_search_results = app.config.get('ES_MAX_SEARCH_RESULT', DEFAULT_MAX_SEARCH_RESULT)
-
-        # Only allow up to (max_search_results / page) pages
-        max_page = min(query_args['page'], int(math.ceil(max_search_results / results_per_page)))
-
-        query_args['page'] = max_page
-        query_args['max_search_results'] = max_search_results
-
-        query_results = search_elastic(**query_args)
-
-        if render_as_rss:
-            return render_rss(
-                '"{}"'.format(search_term), query_results,
-                use_elastic=True, magnet_links=use_magnet_links)
-        else:
-            rss_query_string = _generate_query_string(
-                search_term, category, quality_filter, user_name)
-            max_results = min(max_search_results, query_results['hits']['total']['value'])
-            # change p= argument to whatever you change page_parameter to or pagination breaks
-            pagination = Pagination(p=query_args['page'], per_page=results_per_page,
-                                    total=max_results, bs_version=3, page_parameter='p',
-                                    display_msg=SERACH_PAGINATE_DISPLAY_MSG)
-            return flask.render_template('home.html',
-                                         use_elastic=True,
-                                         pagination=pagination,
-                                         torrent_query=query_results,
-                                         search=query_args,
-                                         rss_filter=rss_query_string,
-                                         special_results=special_results)
+    if app.config['USE_BAKED_SEARCH']:
+        query = search_db_baked(**query_args)
     else:
-        # If ES is enabled, default to db search for browsing
-        if use_elastic:
-            query_args['term'] = ''
-        else:  # Otherwise, use db search for everything
-            query_args['term'] = search_term or ''
+        query = search_db(**query_args)
 
-        if app.config['USE_BAKED_SEARCH']:
-            query = search_db_baked(**query_args)
-        else:
-            query = search_db(**query_args)
-
-        if render_as_rss:
-            return render_rss('Home', query, use_elastic=False, magnet_links=use_magnet_links)
-        else:
-            rss_query_string = _generate_query_string(
-                search_term, category, quality_filter, user_name)
-            # Use elastic is always false here because we only hit this section
-            # if we're browsing without a search term (which means we default to DB)
-            # or if ES is disabled
-            return flask.render_template('home.html',
-                                         use_elastic=False,
-                                         torrent_query=query,
-                                         search=query_args,
-                                         rss_filter=rss_query_string,
-                                         special_results=special_results)
+    if render_as_rss:
+        return render_rss('Home', query, use_elastic=False, magnet_links=use_magnet_links)
+    else:
+        rss_query_string = _generate_query_string(
+            search_term, category, quality_filter, user_name)
+        # Use elastic is always false here because we only hit this section
+        # if we're browsing without a search term (which means we default to DB)
+        # or if ES is disabled
+        return flask.render_template('home.html',
+                                        use_elastic=False,
+                                        item_query=query,
+                                        search=query_args,
+                                        rss_filter=rss_query_string,
+                                        special_results=special_results)
 
 
 def render_rss(label, query, use_elastic, magnet_links=False):
@@ -213,7 +174,7 @@ def render_rss(label, query, use_elastic, magnet_links=False):
                                     magnet_links=magnet_links,
                                     term=label,
                                     site_url=flask.request.url_root,
-                                    torrent_query=query)
+                                    item_query=query)
     response = flask.make_response(rss_xml)
     response.headers['Content-Type'] = 'application/xml'
     # Cache for an hour

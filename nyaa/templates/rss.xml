@@ -10,11 +10,11 @@
 			{% if use_elastic %}
 				{# ElasticSearch Torrent instances #}
 				{% if torrent.has_torrent and not magnet_links %}
-				<link>{{ url_for('torrents.download', torrent_id=torrent.meta.id, _external=True) }}</link>
+				<link>{{ url_for('items.download', torrent_id=torrent.meta.id, _external=True) }}</link>
 				{% else %}
 				<link>{{ create_magnet_from_es_torrent(torrent) }}</link>
 				{% endif %}
-				<guid isPermaLink="true">{{ url_for('torrents.view', torrent_id=torrent.meta.id, _external=True) }}</guid>
+				<guid isPermaLink="true">{{ url_for('items.view', torrent_id=torrent.meta.id, _external=True) }}</guid>
 				<pubDate>{{ torrent.created_time|rfc822_es }}</pubDate>
 
 				<nyaa:seeders>  {{- torrent.seed_count     }}</nyaa:seeders>
@@ -24,11 +24,11 @@
 			{% else %}
 				{# Database Torrent rows #}
 				{% if torrent.has_torrent and not magnet_links %}
-				<link>{{ url_for('torrents.download', torrent_id=torrent.id, _external=True) }}</link>
+				<link>{{ url_for('items.download', torrent_id=torrent.id, _external=True) }}</link>
 				{% else %}
 				<link>{{ torrent.magnet_uri }}</link>
 				{% endif %}
-				<guid isPermaLink="true">{{ url_for('torrents.view', torrent_id=torrent.id, _external=True) }}</guid>
+				<guid isPermaLink="true">{{ url_for('items.view', torrent_id=torrent.id, _external=True) }}</guid>
 				<pubDate>{{ torrent.created_time|rfc822 }}</pubDate>
 
 				<nyaa:seeders>  {{- torrent.stats.seed_count     }}</nyaa:seeders>
@@ -44,7 +44,7 @@
 			<nyaa:trusted>   {{- torrent.trusted and 'Yes' or 'No' }}</nyaa:trusted>
 			<nyaa:remake>    {{- torrent.remake  and 'Yes' or 'No' }}</nyaa:remake>
 			{% set torrent_id = use_elastic and torrent.meta.id or torrent.id %}
-			<description><![CDATA[<a href="{{ url_for('torrents.view', torrent_id=torrent_id, _external=True) }}">#{{ torrent_id }} | {{ torrent.display_name }}</a> | {{ torrent.filesize | filesizeformat(True) }} | {{ category_name(cat_id) }} | {{ use_elastic and torrent.info_hash or torrent.info_hash_as_hex | upper }}]]></description>
+			<description><![CDATA[<a href="{{ url_for('items.view', torrent_id=torrent_id, _external=True) }}">#{{ torrent_id }} | {{ torrent.display_name }}</a> | {{ torrent.filesize | filesizeformat(True) }} | {{ category_name(cat_id) }} | {{ use_elastic and torrent.info_hash or torrent.info_hash_as_hex | upper }}]]></description>
 		</item>
 		{% endfor %}
 	</channel>

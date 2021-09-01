@@ -1,14 +1,14 @@
 {% extends "layout.html" %}
-{% block title %}Upload Torrent :: {{ config.SITE_NAME }}{% endblock %}
+{% block title %}Upload Item :: {{ config.SITE_NAME }}{% endblock %}
 {% block metatags %}
-<meta property="og:description" content="Upload a torrent to {{ config.SITE_NAME }}">
+<meta property="og:description" content="Upload an item to {{ config.SITE_NAME }}">
 {% endblock %}
 {% block body %}
 {% from "_formhelpers.html" import render_field %}
 {% from "_formhelpers.html" import render_upload %}
 {% from "_formhelpers.html" import render_markdown_editor %}
 
-<h1>Upload Torrent</h1>
+<h1>Upload Item</h1>
 {% if not g.user %}
 <p>You are not logged in, and are uploading anonymously.</p>
 {% endif %}
@@ -51,7 +51,7 @@
 
 	<div class="row">
 		<div class="col-md-12">
-		{{ render_upload(upload_form.torrent_file, accept=".torrent") }}
+		{{ render_upload(upload_form.submission_file) }}
 		</div>
 	</div>
 	<div class="row">
@@ -67,17 +67,17 @@
 			{{ render_field(upload_form.information, class_='form-control', placeholder='Your website or IRC channel') }}
 		</div>
 		<div class="col-md-6">
-			<label class="control-label">Torrent flags</label><br>
+			<label class="control-label">Item flags</label><br>
 
 			<div class="btn-group" data-toggle="buttons">
-				<label class="btn btn-default {% if not g.user %}active disabled{% endif %}" title="Upload torrent anonymously (don't display your username)">
+				<label class="btn btn-default {% if not g.user %}active disabled{% endif %}" title="Upload item anonymously (don't display your username)">
 					{{ upload_form.is_anonymous(disabled=(False if g.user else ""), checked=(False if g.user else "")) }}
 					{% if not g.user %}<span class="glyphicon glyphicon-ban-circle"></span>{% endif %}
 					{% if g.user %}<span class="glyphicon glyphicon-check"></span>{% endif %}
 					{% if g.user %}<span class="glyphicon glyphicon-unchecked"></span>{% endif %}
 					Anonymous
 				</label>
-				<label class="btn btn-grey" title="Hide torrent from listing">
+				<label class="btn btn-grey" title="Hide item from listing">
 					{{ upload_form.is_hidden }}
 					<span class="glyphicon glyphicon-check"></span>
 					<span class="glyphicon glyphicon-unchecked"></span>
@@ -86,20 +86,20 @@
 			</div>
 			<div class="hidden-xl hidden-lg"><br></div>
 			<div class="btn-group" data-toggle="buttons">
-				<label class="btn btn-danger" title="This torrent is derived from another release">
+				<label class="btn btn-danger" title="This item is derived from another release">
 					{{ upload_form.is_remake }}
 					<span class="glyphicon glyphicon-check"></span>
 					<span class="glyphicon glyphicon-unchecked"></span>
 					Remake
 				</label>
-				<label class="btn btn-warning" title="This torrent is a complete batch (eg. season)">
+				<label class="btn btn-warning" title="This item is a complete batch (eg. season)">
 					{{ upload_form.is_complete }}
 					<span class="glyphicon glyphicon-check"></span>
 					<span class="glyphicon glyphicon-unchecked"></span>
 					Complete
 				</label>
 				{% if g.user.is_trusted %}
-				<label class="btn btn-success active" title="Mark torrent trusted">
+				<label class="btn btn-success active" title="Mark item trusted">
 					{{ upload_form.is_trusted(checked="") }}
 					<span class="glyphicon glyphicon-check"></span>
 					<span class="glyphicon glyphicon-unchecked"></span>
