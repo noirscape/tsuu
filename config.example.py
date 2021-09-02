@@ -29,9 +29,9 @@ RAID_MODE_REGISTER_MESSAGE = 'Registration is currently being limited.'
 #############
 
 # What the site identifies itself as. This affects templates, not database stuff.
-SITE_NAME = 'fNyaa'
+SITE_NAME = 'ツー'
 # What the both sites are labeled under (used for eg. email subjects)
-GLOBAL_SITE_NAME = 'Nyaa.si'
+GLOBAL_SITE_NAME = 'tsuu'
 
 # General prefix for running multiple sites, eg. most database tables are site-prefixed
 SITE_FLAVOR = 'nyaa' # 'nyaa' or 'sukebei'
@@ -135,8 +135,18 @@ ACCOUNT_RECAPTCHA_AGE = 7 * 24 * 3600  # A week
 # (0 disables the limitation)
 PER_IP_ACCOUNT_COOLDOWN = 24 * 3600
 
+#############
+## Storage ##
+#############
+
+# Root storage folder; everything below this will be used as a subdirectory of that folder.
+ROOT_FOLDER = 'storage'
+
 # Item storage folder
 ITEM_FOLDER = 'items'
+
+# Should flask serve items or not? Normally you don't want Flask to do this, it's a dev feature.
+FLASK_SERVE_ITEMS = False
 
 ############
 ## Search ##

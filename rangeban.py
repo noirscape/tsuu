@@ -6,8 +6,8 @@ import sys
 
 import click
 
-from nyaa import create_app, models
-from nyaa.extensions import db
+from tsuu import create_app, models
+from tsuu.extensions import db
 
 
 def is_cidr_valid(c):

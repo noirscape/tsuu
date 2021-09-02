@@ -1,7 +1,7 @@
 import unittest
 import json
 
-from nyaa import api_handler, models
+from tsuu import api_handler, models
 from tests import NyaaTestCase
 from pprint import pprint
 

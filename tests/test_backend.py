@@ -1,6 +1,6 @@
 import unittest
 
-from nyaa import backend
+from tsuu import backend
 
 
 class TestBackend(unittest.TestCase):

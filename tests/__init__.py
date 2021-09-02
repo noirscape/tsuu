@@ -3,7 +3,7 @@
 import os
 import unittest
 
-from nyaa import create_app
+from tsuu import create_app
 
 USE_MYSQL = True
 

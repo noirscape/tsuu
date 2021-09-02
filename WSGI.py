@@ -3,7 +3,7 @@
 import gevent.monkey
 gevent.monkey.patch_all()
 
-from nyaa import create_app
+from tsuu import create_app
 
 app = create_app('config')
 

@@ -1,8 +1,8 @@
 # Small script that lets you evaluate users to any role you want. You need their ID.
 
-from nyaa.extensions import db
+from tsuu.extensions import db
 
-from nyaa import create_app, models
+from tsuu import create_app, models
 import sys
 
 app = create_app('config')

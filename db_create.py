@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 import sqlalchemy
 
-from nyaa import create_app, models
-from nyaa.extensions import db
+from tsuu import create_app, models
+from tsuu.extensions import db
 
 from config import USE_MYSQL
 

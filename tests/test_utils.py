@@ -2,7 +2,7 @@ import unittest
 from collections import OrderedDict
 
 from hashlib import sha1
-from nyaa import utils
+from tsuu import utils
 
 
 class TestUtils(unittest.TestCase):

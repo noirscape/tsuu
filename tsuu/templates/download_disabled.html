@@ -1,0 +1,11 @@
+{% extends "layout.html" %}
+{% block title %}Flask file server disabled :: {{ config.SITE_NAME }}{% endblock %}
+{% block metatags %}
+<meta property="og:description" content="Nothing here.">
+{% endblock %}
+{% block body %}
+<h1>Flask server disabled</h1>
+<p>If you see this message, it means that Flask's file server has been disabled. This is normal, it should not be on in a production instance.</p>
+<p>If you are a user, contact the owner of this server to let them know that the webserver has been improperly configured.</p>
+<p>If you are a webadmin, please make sure that the items directory is served to location path <kbd>/items/</kbd>.</p>
+{% endblock %}

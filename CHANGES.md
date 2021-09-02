@@ -2,6 +2,10 @@
 
 ## Feature changes
 
+- Implemented file serving functionality.
+- Allowed uploading any file/items functionality.
+- Renamed to tsuu
+
 ## Steps taken to allow easier development
 
 Most of these pertain to making tools cross-platform.

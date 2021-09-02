@@ -1,4 +1,6 @@
-# FNYAA
+# gorogoro
+
+## ゴロゴロ
 
 A fork of an anime tracker that is a file CMS. In early dev.
 

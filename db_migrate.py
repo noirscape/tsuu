@@ -5,8 +5,8 @@ import sys
 from flask_script import Manager
 from flask_migrate import Migrate, MigrateCommand
 
-from nyaa import create_app
-from nyaa.extensions import db
+from tsuu import create_app
+from tsuu.extensions import db
 
 app = create_app('config')
 migrate = Migrate(app, db)
