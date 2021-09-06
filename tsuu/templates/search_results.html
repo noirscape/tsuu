@@ -76,7 +76,7 @@
 					<a href="{{ url_for('items.view', item_id=item_id) }}" title="{{ item.display_name | escape }}">{{ item.display_name | escape }}</a>
 				</td>
 				<td class="text-center">
-					<a href="{{ url_for('download.download', item_id=item_id) }}"><i class="fa fa-fw fa-download"></i></a>
+					<a href="{{ url_for('download.download', slug=item.item_directory ) }}"><i class="fa fa-fw fa-download"></i></a>
 					<!-- <a href="{{ item.magnet_uri }}"><i class="fa fa-fw fa-magnet"></i></a>-->
 				</td>
 				<td class="text-center">{{ item.filesize | filesizeformat(True) }}</td>

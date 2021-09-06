@@ -7,7 +7,8 @@ from tsuu.views import (  # isort:skip
     site,
     items,
     users,
-    download
+    download,
+    files,
 )
 
 
@@ -49,3 +50,4 @@ def register_views(flask_app):
     flask_app.register_blueprint(items.bp)
     flask_app.register_blueprint(users.bp)
     flask_app.register_blueprint(download.bp)
+    flask_app.register_blueprint(files.bp)

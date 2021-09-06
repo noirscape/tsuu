@@ -50,6 +50,32 @@ class ItemExtraValidationException(Exception):
     def __init__(self, errors={}):
         self.errors = errors
 
+# Recurse over the item directory to create the file list
+# Returns 2 values: the file list and the total size of everything in the directory.
+def get_file_data(root):
+    def file_tree(path, d):
+        name = os.path.basename(path)
+
+        if os.path.isdir(path):
+            d[name] = {}
+            for x in os.listdir(path):
+                file_tree(os.path.join(path,x), d[name])
+        else:
+            # Path is a file; save it
+            d[name] = os.path.getsize(path)
+        return d
+
+    def filesize(path, s):
+        name = os.path.basename(path)
+
+        if os.path.isdir(path):
+            for x in os.listdir(path):
+                filesize(os.path.join(path, x), s)
+        else:
+            s.append(os.path.getsize(path))
+        return s
+
+    return file_tree(root, dict()), sum(filesize(root, []))
 
 @utils.cached_function
 def get_category_id_map():
@@ -170,6 +196,22 @@ def check_uploader_ratelimit(user):
     return now, item_count, next_allowed_time
 
 
+def handle_item_change(item_id):
+    """This function handles an item change.
+    
+    Specifically, it rebuilds the item list for a given item ID."""
+    item = models.Item.by_id(item_id)
+
+    base_dir = f"{app.config['ROOT_FOLDER']}/{app.config['ITEM_FOLDER']}/{item.item_directory}"
+    parsed_file_tree, filesize = get_file_data(base_dir)
+    json_bytes = json.dumps(parsed_file_tree, separators=(',', ':')).encode('utf8')
+    item.filelist = models.Filelist(filelist_blob=json_bytes)
+    item.filesize = filesize
+
+    db.session.merge(item)
+    db.session.flush()
+    db.session.commit()
+
 def handle_item_upload(upload_form, uploading_user=None, fromAPI=False):
     ''' Stores an item to the database.
         May throw ItemExtraValidationException if the form/item fails
@@ -225,7 +267,6 @@ def handle_item_upload(upload_form, uploading_user=None, fromAPI=False):
                             filesize=item_filesize,
                             user=uploading_user,
                             uploader_ip=ip_address(flask.request.remote_addr).packed)
-    print("Made model")
 
     # Store file
     item_directory = f"{app.config['ROOT_FOLDER']}/{app.config['ITEM_FOLDER']}/{item.item_directory}"
@@ -258,25 +299,8 @@ def handle_item_upload(upload_form, uploading_user=None, fromAPI=False):
     item.main_category_id, item.sub_category_id = \
         upload_form.category.parsed_data.get_category_ids()
 
-    print("making tree")
-    # Recurse over the item directory to create the file list
-    def get_file_tree(root):
-        def file_tree(path, d):
-            name = os.path.basename(path)
-
-            if os.path.isdir(path):
-                d[name] = {}
-                for x in os.listdir(path):
-                    file_tree(os.path.join(path,x), d[name])
-            else:
-                # Path is a file; save it
-                d[name] = os.path.getsize(path)
-            return d
-
-        return file_tree(root, dict())
-
-    parsed_file_tree = get_file_tree(item_directory)
-    print("made tree")
+    parsed_file_tree, item_filesize = get_file_data(item_directory)
+    item.filesize = item_filesize
 
     json_bytes = json.dumps(parsed_file_tree, separators=(',', ':')).encode('utf8')
     item.filelist = models.Filelist(filelist_blob=json_bytes)

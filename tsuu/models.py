@@ -204,6 +204,11 @@ class ItemBase(DeclarativeHelperBase):
         return (self.created_time - UTC_EPOCH).total_seconds()
 
     @property
+    def updated_utc_timestamp(self):
+        """Returns a UTC POSIX timestamp, as seconds """
+        return (self.updated_time - UTC_EPOCH).total_seconds()
+
+    @property
     def information_as_link(self):
         ''' Formats the .information into an IRC or HTTP(S) <a> if possible,
             otherwise escapes it. '''
@@ -246,6 +251,9 @@ class ItemBase(DeclarativeHelperBase):
     def by_id(cls, id):
         return cls.query.get(id)
 
+    @classmethod
+    def by_slug(cls, slug):
+        return cls.query.filter_by(item_directory=slug).first()
 
 class ItemFilelistBase(DeclarativeHelperBase):
     __tablename_base__ = 'item_filelist'

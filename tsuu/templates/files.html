@@ -1,0 +1,287 @@
+{% extends "layout.html" %}
+{% block title %}Edit files :: {{ config.SITE_NAME }}{% endblock %}
+{% block body %}
+{% from "_formhelpers.html" import render_upload %}
+{% from "_formhelpers.html" import render_field %}
+{% set item_url = url_for('items.view', item_id=item.id) %}
+
+<h1>
+    Edit files in Item <a href="{{ item_url }}">#{{item.id}}</a>
+	{% if (user != None) and (user != g.user) %}
+	(by <a href="{{ url_for('users.view_user', user_name=item.user.username) }}">{{ item.user.username }}</a>)
+	{% endif %}
+</h1>
+
+<div id="filemanager" style="height: 50vh; max-height: 400px; position: relative;"></div>
+
+<script type="text/javascript" src="{{ static_cachebuster('js/file-explorer.js') }}"></script>
+<script type="text/javascript">
+(function() {
+    var elem = document.getElementById('filemanager');
+
+    var options = {
+        initpath: [
+            ['', '{{ item.display_name }} (/)', {}]
+        ],
+
+        onrefresh: function(folder, required) {
+            var $this = this;
+
+            var xhr = new this.PrepareXHR({
+                url: '/view/{{ item.id }}/edit/files/manager',
+                params: {
+                    action: 'refresh',
+                    path: JSON.stringify(folder.GetPathIDs()),
+                },
+                onsuccess: function(e) {
+                    var data = JSON.parse(e.target.response);
+                    console.log(data);
+                    if (data.success) folder.SetEntries(data.entries);
+                    else if (required) $this.SetNamedStatusBarText(folder, $this.EscapeHTML('Failed to load folder.  '+ data.error));
+                },
+                onerror: function(e) {
+                    if (required)  $this.SetNamedStatusBarText('folder', 'Failed to load folder.  Server error.');
+                    console.log(e);
+                }
+            });
+
+            xhr.Send();
+        },
+
+        onrename: function(renamed, folder, entry, newname) {
+            var xhr = new this.PrepareXHR({
+                url: '/view/{{ item.id }}/edit/files/manager',
+                params: {
+                    action: 'rename',
+                    path: JSON.stringify(folder.GetPathIDs()),
+                    id: entry.id,
+                    newname: newname,
+                },
+                onsuccess: function(e) {
+                    var data = JSON.parse(e.target.response);
+                    console.log(data);
+                    if (data.success) renamed(data.entry);
+                    else renamed(data.error);
+                },
+                onerror: function(e) {
+                    renamed("Server/Network error.")
+                }
+            });
+
+            xhr.Send();
+        },
+        onnewfolder: function(created, folder) {
+            var xhr = new this.PrepareXHR({
+                url: '/view/{{ item.id }}/edit/files/manager',
+                params: {
+                    action: 'newfolder',
+                    path: JSON.stringify(folder.GetPathIDs()),
+                },
+                onsuccess: function(e) {
+                    var data = JSON.parse(e.target.response);
+                    console.log(data);
+                    if (data.success) created(data.entry);
+                    else created(data.error);
+                },
+                onerror: function(e) {
+                    created("Server/Network error.")
+                }
+            });
+
+            xhr.Send();
+        },
+        ondelete: function(deleted, folder, ids, entries, recycle) {
+            if(!confirm('Are you sure you want to permanently delete ' + (entries.length == 1 ? '"' + entries[0].name + '"' : entries.length + ' files') +  '?'))  deleted('Cancelled deletion');
+            else {
+                var xhr = new this.PrepareXHR({
+                    url: '/view/{{ item.id }}/edit/files/manager',
+                    params: {
+                        action: 'delete',
+                        path: JSON.stringify(folder.GetPathIDs()),
+                        ids: JSON.stringify(ids)
+                    },
+                    onsuccess: function(e) {
+                        var data = JSON.parse(e.target.response);
+                        console.log(data);
+                        if (data.success) deleted(true);
+                        else deleted(data.error);
+                    },
+                    onerror: function(e) {
+                        deleted("Server/Network error.")
+                    }
+                });
+
+                xhr.Send();
+            }
+        },
+        oninitupload: function(startupload, fileinfo, queuestarted) {
+            console.log(fileinfo);
+            if (fileinfo.type == "dir") {
+                fileinfo.url = '/view/{{ item.id }}/edit/files/manager',
+                fileinfo.params = {
+                    action: 'newfolder',
+                    path: JSON.stringify(fileinfo.folder.GetPathIDs()),
+                    name: fileinfo.fullPath
+                }
+                fileinfo.onsuccess = function(e) {
+                    var data = JSON.parse(e.target.response);
+                    console.log(data);
+                    if (data.success) startupload(true);
+                    else startupload(data.error);
+                },
+                fileinfo.onerror = function(e) {
+                    startupload("Server/Network error.")
+                }
+
+                startupload(true);
+            }
+            else if (fileinfo.type == "file") {
+                fileinfo.url = '/view/{{ item.id }}/edit/files/manager',
+                fileinfo.params = {
+                    action: 'upload',
+                    path: JSON.stringify(fileinfo.folder.GetPathIDs()),
+                    name: fileinfo.fullPath,
+                    size: fileinfo.file.size,
+                }
+
+                fileinfo.fileparam = 'file',
+                fileinfo.currpathparam = 'currpath',
+
+                fileinfo.onsuccess = function(e) {
+                    var data = JSON.parse(e.target.response);
+                    console.log(data);
+                    if (data.success) startupload(true);
+                    else startupload(data.error);
+                },
+                fileinfo.onerror = function(e) {
+                    startupload("Server/Network error.")
+                }
+
+                startupload(true);
+            }
+        },
+
+        oncopy: function(copied, srcpath, srcids, destfolder) {
+            var $this = this;
+
+            var xhr = new $this.PrepareXHR({
+                url: '/view/{{ item.id }}/edit/files/manager',
+                params: {
+                    action: 'copy',
+                    srcpath: JSON.stringify($this.GetPathIDs(srcpath)),
+                    srcids: JSON.stringify(srcids),
+                    destpath: JSON.stringify(destfolder.GetPathIDs()),
+                    prepare: 'true'
+                },
+                onsuccess: function(e) {
+                    var data = JSON.parse(e.target.response);
+                    console.log(data);
+                    if (!data.success) copied(data.error);
+                    else if (data.overwrite > 0 && (!confirm("Copying will overwrite " + data.overwrite + " " + (data.overwrite === 1 ? 'file' : 'files') + ". Proceed?", data.overwrite))) copied("Cancelled.")
+                    else {
+                        var entries = []
+                        var status_bar = $this.CreateProgressTracker()
+                        status_bar.queued_items = srcids.length
+                        srcids.forEach(srcid => {
+                            var copyxhr = new $this.PrepareXHR({
+                                url: '/view/{{ item.id }}/edit/files/manager',
+                                params: {
+                                    action: 'copy',
+                                    srcpath: JSON.stringify($this.GetPathIDs(srcpath)),
+                                    srcids: JSON.stringify([srcid]),
+                                    destpath: JSON.stringify(destfolder.GetPathIDs())
+                                },
+
+                                onsuccess: function(e) {
+                                    var data = JSON.parse(e.target.response);
+                                    if (data.success) {
+                                        console.log(data); 
+                                        status_bar.itemsdone++;
+                                    }
+                                    else {
+                                        console.log(data); 
+                                        status_bar.faileditems++;
+                                    }
+                                },
+
+                                onerror: function(e) {
+                                    $this.RemoveProgressTracker(status_bar, "copying failed")
+                                    copied("Server/Network error.")
+                                }
+                            });
+                            copyxhr.Send();
+                        });
+                        $this.RemoveProgressTracker(status_bar, status_bar.faileditems == 0 ? "Copying done!" : "Copying finished; there were errors.")
+                        copied(true);
+                    }
+                },
+                onerror: function(e) {
+                    copied("Server/Network error.")
+                }
+            });
+
+            xhr.Send();
+        },
+
+        onmove: function(moved, srcpath, srcids, destfolder) {
+            var $this = this;
+            var xhr = new $this.PrepareXHR({
+                url: '/view/{{ item.id }}/edit/files/manager',
+                params: {
+                    action: 'move',
+                    srcpath: JSON.stringify($this.GetPathIDs(srcpath)),
+                    srcids: JSON.stringify(srcids),
+                    destpath: JSON.stringify(destfolder.GetPathIDs()),
+                    prepare: 'true',
+                },
+
+                onsuccess: function(e) {
+                    var data = JSON.parse(e.target.response);
+                    console.log(data);
+
+                    if (!data.success) moved(data.error);
+                    else if (data.overwrite > 0 && (!confirm("Moving will overwrite " + data.overwrite + " " + (data.overwrite === 1 ? 'file' : 'files') + ". Proceed?", data.overwrite))) copied("Cancelled.")
+                    else {
+                        var xhr = new $this.PrepareXHR({
+                            url: '/view/{{ item.id }}/edit/files/manager',
+                            params: {
+                                action: 'move',
+                                srcpath: JSON.stringify($this.GetPathIDs(srcpath)),
+                                srcids: JSON.stringify(srcids),
+                                destpath: JSON.stringify(destfolder.GetPathIDs()),
+                            },
+
+                            onsuccess: function(e) {
+                                var data = JSON.parse(e.target.response);
+                                console.log(data);
+                                if (data.sucess) moved(true);
+                                else moved(data.error);
+                            },
+
+                            onerror: function(e) {
+                                moved("Server/Network error.")
+                            }
+                        })
+
+                        xhr.Send();
+                    }
+                },
+
+                onerror: function(e) {
+                    copied("Server/Network error.")
+                }
+            });
+
+            xhr.Send();
+        }
+    };
+
+    var fe = window.FileExplorer(elem, options);
+})();
+</script>
+
+
+<!-- Load in the file manager last... -->
+<link rel="stylesheet" href="{{ static_cachebuster('css/file-explorer.css') }}">
+
+{% endblock %}

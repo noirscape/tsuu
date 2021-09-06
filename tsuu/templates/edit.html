@@ -95,7 +95,7 @@
 <hr>
 
 <div class="row">
-	<div class="col-md-5"">
+	<div class="col-md-5">
 		<div class="panel panel-danger">
 			<div class="panel-heading">
 				<h3 class="panel-title">Danger Zone</h3>
@@ -256,6 +256,22 @@
 {% endif %}
 {% endif %}
 				</form>
+			</div>
+		</div>
+	</div>
+	<div class="col-md-3">
+		<div class="panel panel-default">
+			<div class="panel-heading">
+				<h3 class="panel-title">Edit files</h3>
+			</div>
+			<div class="panel-body">
+				<a href="{{ url_for('files.edit', item_id=item.id ) }}" class="btn btn-info pull-right">Edit files</a>
+				<p class="lead">Edit files</p>
+				<p>To add or remove files to this item, click the edit files button.</p>
+				<hr>
+				<a href="{{ url_for('files.refresh', item_id=item.id ) }}" class="btn btn-info pull-right">Refresh tree</a>
+				<p class="lead">Refresh file tree</p>
+				<p>If you've modified the files on the server, click this button to update the file tree.</p>
 			</div>
 		</div>
 	</div>

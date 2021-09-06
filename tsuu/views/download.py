@@ -10,9 +10,9 @@ from tsuu import models
 app = flask.current_app
 bp = flask.Blueprint('download', __name__)
 
-@bp.route('/items/<string:item_id>/', defaults={'path': None})
-@bp.route('/items/<string:item_id>/<path:path>')
-def download(item_id, path):
+@bp.route('/items/<string:slug>/', defaults={'path': None})
+@bp.route('/items/<string:slug>/<path:path>')
+def download(slug, path):
     """
     Serves up the items.
 
@@ -29,7 +29,11 @@ def download(item_id, path):
     if not app.config["FLASK_SERVE_ITEMS"]:
         return flask.render_template("download_disabled.html")
 
-    item = models.Item.by_id(item_id)
+    item = models.Item.by_slug(slug)
+
+    # slug doesnt exist.
+    if not item:
+        flask.abort(404)
 
     # THIS IS STUPID - TAKES CARE OF SEPARATORS
     base_dir = f"{os.getcwd()}{os.sep}{app.config['ROOT_FOLDER']}{os.sep}{app.config['ITEM_FOLDER']}{os.sep}{item.item_directory}"

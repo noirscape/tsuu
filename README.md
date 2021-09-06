@@ -1,10 +1,12 @@
-# gorogoro
+# tsuu
 
-## ゴロゴロ
+## ツー
 
 A fork of an anime tracker that is a file CMS. In early dev.
 
 See CHANGELOG.md for all the changes.
+
+ツー translates to "tsuu" and is the onomatopoeia of a buzzing insect/bee.
 
 ## Setting up for development
 
@@ -45,3 +47,7 @@ The default storage backend is SQLite.
     - Check the script (`migrations/versions/...`) and make sure it works! Alembic may not able to notice all changes.
   - Run `./db_migrate.py upgrade` to run the migration and verify the upgrade works.
     - (Run `./db_migrate.py downgrade` to verify the downgrade works as well, then upgrade again)
+
+## Other
+
+- Uses cubiclesoft's [js-fileexplorer](https://github.com/cubiclesoft/js-fileexplorer)
