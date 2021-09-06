@@ -30,4 +30,4 @@ nyaa/static/js/main.min.js
 # Other
 *.swp
 
-items/*
+storage/*
